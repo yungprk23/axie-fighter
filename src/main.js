@@ -34,6 +34,7 @@ const game = new Phaser.Game(config);
 
 let player, npc;
 let ground;
+let platforms = [];
 let healthBars = {};
 let gameState = 'playing';
 let helpOverlay;
@@ -66,6 +67,7 @@ function create() {
 
     createBackground(this);
     createGround(this);
+    createPlatforms(this);
     
     // Process character textures to remove backgrounds
     processCharacterTextures(this);
@@ -256,7 +258,7 @@ function updateParallax() {
 }
 
 function createGround(scene) {
-    const groundHeight = 120;
+    const groundHeight = 160; // raised invisible floor
     const groundY = config.height - groundHeight/2;
     // Invisible ground collider (no visible graphics)
     ground = scene.add.rectangle(config.width/2, groundY, config.width, groundHeight, 0x74c69d);
@@ -264,12 +266,37 @@ function createGround(scene) {
     ground.setVisible(false);
 }
 
+function createPlatforms(scene) {
+    const specs = [
+        { x: config.width * 0.25, y: config.height * 0.62 },
+        { x: config.width * 0.50, y: config.height * 0.50 },
+        { x: config.width * 0.75, y: config.height * 0.62 }
+    ];
+    specs.forEach(pos => {
+        const rect = scene.add.rectangle(pos.x, pos.y, 160, 12, 0x8B5A2B).setDepth(5);
+        scene.physics.add.existing(rect, true);
+        platforms.push(rect);
+    });
+}
+
 function createFighters(scene) {
-    player = new Fighter(scene, 300, config.height - 120, 'player', 0xffa500);
-    npc = new Fighter(scene, 660, config.height - 120, 'npc', 0x52b788);
+    // temporary y, will adjust after bodies ready
+    player = new Fighter(scene, 300, 0, 'player', 0xffa500);
+    npc   = new Fighter(scene, 660, 0, 'npc',   0x52b788);
     
     scene.physics.add.collider(player.sprite, ground);
     scene.physics.add.collider(npc.sprite, ground);
+
+    // platform colliders
+    platforms.forEach(p => {
+        scene.physics.add.collider(player.sprite, p);
+        scene.physics.add.collider(npc.sprite,   p);
+    });
+
+    // spawn fighters on floor
+    const floorTop = ground.body.top;
+    player.sprite.y = floorTop - player.sprite.body.height / 2;
+    npc.sprite.y    = floorTop - npc.sprite.body.height / 2;
     
     scene.physics.add.overlap(
         player.attackHitbox, 
