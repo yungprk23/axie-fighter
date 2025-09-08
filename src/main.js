@@ -254,13 +254,10 @@ function updateParallax() {
 function createGround(scene) {
     const groundHeight = 60;
     const groundY = config.height - groundHeight/2;
-    
-    const groundGraphics = scene.add.graphics();
-    groundGraphics.fillStyle(0x74c69d, 1);
-    groundGraphics.fillRect(0, config.height - groundHeight, config.width, groundHeight);
-    
+    // Invisible ground collider (no visible graphics)
     ground = scene.add.rectangle(config.width/2, groundY, config.width, groundHeight, 0x74c69d);
     scene.physics.add.existing(ground, true);
+    ground.setVisible(false);
 }
 
 function createFighters(scene) {
@@ -603,8 +600,14 @@ class Fighter {
 
         // Use different body sizes based on texture type
         if (keys.includes(textureKey)) {
-            /* use rectangular body sized to sprite */
-            this.sprite.setBodySize(this.sprite.width * 0.6, this.sprite.height * 0.8, true);
+            /* scale down large sprite and size body accordingly */
+            const SCALE = 0.35;
+            this.sprite.setScale(SCALE);
+            this.sprite.setBodySize(
+                this.sprite.width * SCALE * 0.6,
+                this.sprite.height * SCALE * 0.8,
+                true
+            );
         } else {
             /* circular body */
             this.sprite.setCircle(this.bodyRadius);
@@ -729,12 +732,10 @@ class Fighter {
         if (isDucking && this.isGrounded()) {
             if (!this.isDucking) {
                 this.sprite.body.setSize(this.sprite.body.width, this.duckHeight);
-                this.sprite.setScale(1, 0.6);
                 this.isDucking = true;
             }
         } else if (this.isDucking) {
             this.sprite.body.setSize(this.sprite.body.width, this.normalHeight);
-            this.sprite.setScale(1, 1);
             this.isDucking = false;
         }
     }
@@ -809,7 +810,7 @@ class Fighter {
             
             if (this.invulnerableTime <= 0) {
                 this.isInvulnerable = false;
-                this.sprite.alpha = 1;
+                this.sprite.clearTint();
             }
         }
     }
@@ -821,8 +822,7 @@ class Fighter {
         
         this.isInvulnerable = true;
         this.invulnerableTime = 500;
-        
-        this.sprite.alpha = 0.5;
+        this.sprite.setTint(0xffaaaa);
         
         const knockbackForce = 150;
         const knockbackDirection = this.facingLeft ? 1 : -1;
@@ -841,7 +841,6 @@ class Fighter {
         this.sprite.setPosition(x, y);
         this.sprite.setVelocity(0, 0);
         this.sprite.clearTint();
-        this.sprite.alpha = 1;
         
         this.health = this.maxHealth;
         this.isAttacking = false;
