@@ -299,6 +299,14 @@ function createGround(scene) {
     ground.setVisible(false);
 }
 
+// Helper: snap a fighter sprite onto the invisible floor top
+function placeOnFloor(fighter) {
+    if (!ground || !ground.body) return;
+    const floorTop = ground.body.top;
+    fighter.sprite.y = floorTop - fighter.sprite.body.height / 2;
+    fighter.sprite.setVelocity(0, 0);
+}
+
 function createPlatforms(scene) {
     // Clear any existing platforms
     platforms = [];
@@ -342,9 +350,8 @@ function createFighters(scene) {
     });
 
     // spawn fighters on floor
-    const floorTop = ground.body.top;
-    player.sprite.y = floorTop - player.sprite.body.height / 2;
-    npc.sprite.y    = floorTop - npc.sprite.body.height / 2;
+    placeOnFloor(player);
+    placeOnFloor(npc);
     
     scene.physics.add.overlap(
         player.attackHitbox, 
@@ -582,8 +589,11 @@ function checkGameEnd() {
 }
 
 function resetGame(scene) {
-    player.reset(300, config.height - 120);
-    npc.reset(660, config.height - 120);
+    // reset state, then snap to floor
+    player.reset(300, 0);
+    npc.reset(660, 0);
+    placeOnFloor(player);
+    placeOnFloor(npc);
     
     updateHealthBar(player);
     updateHealthBar(npc);
