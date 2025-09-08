@@ -48,8 +48,11 @@ function preload() {
     // Optional external assets. If files are not present the game falls back to
     // procedural graphics without breaking.
     this.load.image('bg-forest', 'assets/backgrounds/forest.png');
+    this.load.image('bg-background', 'assets/backgrounds/background.jpg');
     this.load.image('playerSprite', 'assets/axies/player.png');
+    this.load.image('playerSpriteAlt', 'assets/axies/1.png');
     this.load.image('npcSprite', 'assets/axies/npc.png');
+    this.load.image('npcSpriteAlt', 'assets/axies/2.png');
     // No other assets required; particle texture is generated at runtime.
 }
 
@@ -150,10 +153,16 @@ function processCharacterTextures(scene) {
     if (scene.textures.exists('playerSprite')) {
         chromaKeyTexture(scene, 'playerSprite', 'playerSprite_ck');
     }
+    if (scene.textures.exists('playerSpriteAlt')) {
+        chromaKeyTexture(scene, 'playerSpriteAlt', 'playerSpriteAlt_ck');
+    }
     
     // Process NPC sprite if it exists
     if (scene.textures.exists('npcSprite')) {
         chromaKeyTexture(scene, 'npcSprite', 'npcSprite_ck');
+    }
+    if (scene.textures.exists('npcSpriteAlt')) {
+        chromaKeyTexture(scene, 'npcSpriteAlt', 'npcSpriteAlt_ck');
     }
 }
 
@@ -161,9 +170,13 @@ function createBackground(scene) {
     background.width = config.width;
     background.height = config.height;
 
-    // If a forest background image is available use it, else draw procedurally
-    if (scene.textures.exists('bg-forest')) {
-        const bgImg = scene.add.image(config.width / 2, config.height / 2, 'bg-forest');
+    // If a background image is available use it, else draw procedurally
+    const bgKey = scene.textures.exists('bg-forest')
+        ? 'bg-forest'
+        : (scene.textures.exists('bg-background') ? 'bg-background' : null);
+
+    if (bgKey) {
+        const bgImg = scene.add.image(config.width / 2, config.height / 2, bgKey);
         bgImg.setDisplaySize(config.width, config.height);
         bgImg.setDepth(0);
         parallaxLayers = [{ layer: bgImg, factor: 0.05 }];
@@ -551,24 +564,23 @@ class Fighter {
     /* -------------------------------------------------- */
 
     createSprite(x, y) {
-        // First try to use the chroma-keyed version
-        const ckAssetKey = this.type === 'player' ? 'playerSprite_ck' : 'npcSprite_ck';
-        // Fallback to regular sprite
-        const regularAssetKey = this.type === 'player' ? 'playerSprite' : 'npcSprite';
-        
+        // Priority list of possible textures
+        const keys = this.type === 'player'
+            ? ['playerSprite_ck','playerSpriteAlt_ck','playerSprite','playerSpriteAlt']
+            : ['npcSprite_ck','npcSpriteAlt_ck','npcSprite','npcSpriteAlt'];
+
         let textureKey = null;
         this.bodyRadius = 30;
 
-        // Try chroma-keyed version first
-        if (this.scene.textures.exists(ckAssetKey)) {
-            textureKey = ckAssetKey;
+        // pick first existing key
+        for (const k of keys) {
+            if (this.scene.textures.exists(k)) {
+                textureKey = k;
+                break;
+            }
         }
-        // Then try regular sprite
-        else if (this.scene.textures.exists(regularAssetKey)) {
-            textureKey = regularAssetKey;
-        }
-        // Fallback to generated vector graphics
-        else {
+        // If none of the candidate textures exist build a fallback circular texture
+        if (textureKey === null) {
             /* build fallback circular texture */
             const g = this.scene.add.graphics();
             g.fillStyle(this.color, 1);
@@ -590,7 +602,7 @@ class Fighter {
         this.sprite.setCollideWorldBounds(true);
 
         // Use different body sizes based on texture type
-        if (textureKey === ckAssetKey || textureKey === regularAssetKey) {
+        if (keys.includes(textureKey)) {
             /* use rectangular body sized to sprite */
             this.sprite.setBodySize(this.sprite.width * 0.6, this.sprite.height * 0.8, true);
         } else {
