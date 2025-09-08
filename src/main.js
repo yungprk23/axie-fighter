@@ -189,33 +189,55 @@ function handleAttackCollision(attacker, defender) {
 }
 
 function createHitEffect(x, y) {
-    const particles = game.scene.scenes[0].add.particles('particle');
-    
-    particles.createEmitter({
-        x: x,
-        y: y,
-        speed: { min: 100, max: 200 },
-        angle: { min: 0, max: 360 },
-        scale: { start: 1, end: 0 },
-        lifespan: 300,
-        quantity: 20,
-        tint: 0xff0000
-    });
+    const scene = game.scene.scenes[0];
+    const count = 16;
+    for (let i = 0; i < count; i++) {
+        const sprite = scene.add.image(x, y, 'particle')
+            .setTint(0xff0000)
+            .setDepth(25)
+            .setScale(1)
+            .setAlpha(1);
+        const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+        const distance = Phaser.Math.Between(40, 100);
+        const dx = Math.cos(angle) * distance;
+        const dy = Math.sin(angle) * distance;
+        scene.tweens.add({
+            targets: sprite,
+            x: x + dx,
+            y: y + dy,
+            alpha: 0,
+            scale: 0,
+            ease: 'Cubic.easeOut',
+            duration: 300,
+            onComplete: () => sprite.destroy()
+        });
+    }
 }
 
 function createDodgeEffect(x, y) {
-    const particles = game.scene.scenes[0].add.particles('particle');
-    
-    particles.createEmitter({
-        x: x,
-        y: y,
-        speed: { min: 50, max: 100 },
-        angle: { min: 0, max: 360 },
-        scale: { start: 1, end: 0 },
-        lifespan: 200,
-        quantity: 10,
-        tint: 0xffffff
-    });
+    const scene = game.scene.scenes[0];
+    const count = 8;
+    for (let i = 0; i < count; i++) {
+        const sprite = scene.add.image(x, y, 'particle')
+            .setTint(0xffffff)
+            .setDepth(25)
+            .setScale(1)
+            .setAlpha(1);
+        const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+        const distance = Phaser.Math.Between(20, 60);
+        const dx = Math.cos(angle) * distance;
+        const dy = Math.sin(angle) * distance;
+        scene.tweens.add({
+            targets: sprite,
+            x: x + dx,
+            y: y + dy,
+            alpha: 0,
+            scale: 0,
+            ease: 'Cubic.easeOut',
+            duration: 200,
+            onComplete: () => sprite.destroy()
+        });
+    }
 }
 
 function createUI(scene) {
