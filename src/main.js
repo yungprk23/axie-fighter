@@ -151,18 +151,22 @@ function chromaKeyTexture(scene, srcKey, dstKey, threshold=40) {
 function processCharacterTextures(scene) {
     // Process player sprite if it exists
     if (scene.textures.exists('playerSprite')) {
-        chromaKeyTexture(scene, 'playerSprite', 'playerSprite_ck');
+        // standard player image – keep a moderate tolerance
+        chromaKeyTexture(scene, 'playerSprite', 'playerSprite_ck', 18);
     }
     if (scene.textures.exists('playerSpriteAlt')) {
-        chromaKeyTexture(scene, 'playerSpriteAlt', 'playerSpriteAlt_ck');
+        // alt player image appears to have a very even background – tighter tolerance
+        chromaKeyTexture(scene, 'playerSpriteAlt', 'playerSpriteAlt_ck', 12);
     }
-    
+
     // Process NPC sprite if it exists
     if (scene.textures.exists('npcSprite')) {
-        chromaKeyTexture(scene, 'npcSprite', 'npcSprite_ck');
+        // main npc image – same tolerance as player
+        chromaKeyTexture(scene, 'npcSprite', 'npcSprite_ck', 18);
     }
     if (scene.textures.exists('npcSpriteAlt')) {
-        chromaKeyTexture(scene, 'npcSpriteAlt', 'npcSpriteAlt_ck');
+        // alt npc image may need slightly looser tolerance
+        chromaKeyTexture(scene, 'npcSpriteAlt', 'npcSpriteAlt_ck', 24);
     }
 }
 
@@ -252,7 +256,7 @@ function updateParallax() {
 }
 
 function createGround(scene) {
-    const groundHeight = 60;
+    const groundHeight = 120;
     const groundY = config.height - groundHeight/2;
     // Invisible ground collider (no visible graphics)
     ground = scene.add.rectangle(config.width/2, groundY, config.width, groundHeight, 0x74c69d);
@@ -601,7 +605,7 @@ class Fighter {
         // Use different body sizes based on texture type
         if (keys.includes(textureKey)) {
             /* scale down large sprite and size body accordingly */
-            const SCALE = 0.35;
+            const SCALE = 0.175;   /* half the previous 0.35 */
             this.sprite.setScale(SCALE);
             this.sprite.setBodySize(
                 this.sprite.width * SCALE * 0.6,
