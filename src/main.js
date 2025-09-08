@@ -33,10 +33,17 @@ let background = {};
 let parallaxLayers = [];
 
 function preload() {
-    this.load.image('particle', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQMAAAD+wSzIAAAABlBMVEX///8AAABVwtN+AAAAAXRSTlMAQObYZgAAABVJREFUeF5jYGBgEGBgYLBgYGAQAAAGpADRPDf0vwAAAABJRU5ErkJggg==');
+    // No external assets to preload; particle texture is generated at runtime.
 }
 
 function create() {
+    // runtime-generate a tiny white square used for particles & hitboxes
+    const particleGfx = this.add.graphics();
+    particleGfx.fillStyle(0xffffff, 1);
+    particleGfx.fillRect(0, 0, 4, 4);
+    particleGfx.generateTexture('particle', 4, 4);
+    particleGfx.destroy();
+
     createBackground(this);
     createGround(this);
     createFighters(this);
