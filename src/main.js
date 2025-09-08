@@ -308,9 +308,9 @@ function createPlatforms(scene) {
     
     // Platform specifications: position and width
     const specs = [
-        { x: config.width * 0.25, y: config.height * 0.40, width: 240 },
-        { x: config.width * 0.50, y: config.height * 0.30, width: 280 },
-        { x: config.width * 0.75, y: config.height * 0.40, width: 240 }
+        { x: config.width * 0.25, y: config.height * 0.46, width: 240 }, // left platform lower
+        { x: config.width * 0.50, y: config.height * 0.30, width: 280 }, // middle unchanged
+        { x: config.width * 0.75, y: config.height * 0.46, width: 240 }  // right platform lower
     ];
     
     // Create each platform
