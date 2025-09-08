@@ -63,6 +63,10 @@ function create() {
 
     createBackground(this);
     createGround(this);
+    
+    // Process character textures to remove backgrounds
+    processCharacterTextures(this);
+    
     createFighters(this);
     createUI(this);
     setupControls(this);
@@ -82,6 +86,74 @@ function update() {
     
     if (gameState === 'over' && Phaser.Input.Keyboard.JustDown(controls.restart)) {
         resetGame(this);
+    }
+}
+
+function chromaKeyTexture(scene, srcKey, dstKey, threshold=40) {
+    // Check if source texture exists
+    if (!scene.textures.exists(srcKey)) {
+        return false;
+    }
+    
+    // Get source texture data
+    const srcTexture = scene.textures.get(srcKey);
+    const source = srcTexture.getSourceImage();
+    
+    // Create a canvas to process the image
+    const canvas = document.createElement('canvas');
+    canvas.width = source.width;
+    canvas.height = source.height;
+    const ctx = canvas.getContext('2d');
+    
+    // Draw the source image onto the canvas
+    ctx.drawImage(source, 0, 0);
+    
+    // Get the image data
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    
+    // Sample the top-left pixel as the key color
+    const keyR = data[0];
+    const keyG = data[1];
+    const keyB = data[2];
+    
+    // Process each pixel
+    for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        
+        // Calculate color distance (simple Euclidean distance in RGB space)
+        const distance = Math.sqrt(
+            Math.pow(r - keyR, 2) +
+            Math.pow(g - keyG, 2) +
+            Math.pow(b - keyB, 2)
+        );
+        
+        // If the color is close to the key color, make it transparent
+        if (distance < threshold) {
+            data[i + 3] = 0; // Set alpha to 0
+        }
+    }
+    
+    // Put the processed image data back onto the canvas
+    ctx.putImageData(imageData, 0, 0);
+    
+    // Create a new texture from the canvas
+    scene.textures.addCanvas(dstKey, canvas);
+    
+    return true;
+}
+
+function processCharacterTextures(scene) {
+    // Process player sprite if it exists
+    if (scene.textures.exists('playerSprite')) {
+        chromaKeyTexture(scene, 'playerSprite', 'playerSprite_ck');
+    }
+    
+    // Process NPC sprite if it exists
+    if (scene.textures.exists('npcSprite')) {
+        chromaKeyTexture(scene, 'npcSprite', 'npcSprite_ck');
     }
 }
 
@@ -479,11 +551,24 @@ class Fighter {
     /* -------------------------------------------------- */
 
     createSprite(x, y) {
-        const assetKey = this.type === 'player' ? 'playerSprite' : 'npcSprite';
-        let textureKey = assetKey;
+        // First try to use the chroma-keyed version
+        const ckAssetKey = this.type === 'player' ? 'playerSprite_ck' : 'npcSprite_ck';
+        // Fallback to regular sprite
+        const regularAssetKey = this.type === 'player' ? 'playerSprite' : 'npcSprite';
+        
+        let textureKey = null;
         this.bodyRadius = 30;
 
-        if (!this.scene.textures.exists(assetKey)) {
+        // Try chroma-keyed version first
+        if (this.scene.textures.exists(ckAssetKey)) {
+            textureKey = ckAssetKey;
+        }
+        // Then try regular sprite
+        else if (this.scene.textures.exists(regularAssetKey)) {
+            textureKey = regularAssetKey;
+        }
+        // Fallback to generated vector graphics
+        else {
             /* build fallback circular texture */
             const g = this.scene.add.graphics();
             g.fillStyle(this.color, 1);
@@ -504,7 +589,8 @@ class Fighter {
         this.sprite.setBounce(0.1);
         this.sprite.setCollideWorldBounds(true);
 
-        if (textureKey === assetKey) {
+        // Use different body sizes based on texture type
+        if (textureKey === ckAssetKey || textureKey === regularAssetKey) {
             /* use rectangular body sized to sprite */
             this.sprite.setBodySize(this.sprite.width * 0.6, this.sprite.height * 0.8, true);
         } else {
