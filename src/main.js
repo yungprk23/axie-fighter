@@ -45,7 +45,12 @@ let background = {};
 let parallaxLayers = [];
 
 function preload() {
-    // No external assets to preload; particle texture is generated at runtime.
+    // Optional external assets. If files are not present the game falls back to
+    // procedural graphics without breaking.
+    this.load.image('bg-forest', 'assets/backgrounds/forest.png');
+    this.load.image('playerSprite', 'assets/axies/player.png');
+    this.load.image('npcSprite', 'assets/axies/npc.png');
+    // No other assets required; particle texture is generated at runtime.
 }
 
 function create() {
@@ -83,7 +88,17 @@ function update() {
 function createBackground(scene) {
     background.width = config.width;
     background.height = config.height;
-    
+
+    // If a forest background image is available use it, else draw procedurally
+    if (scene.textures.exists('bg-forest')) {
+        const bgImg = scene.add.image(config.width / 2, config.height / 2, 'bg-forest');
+        bgImg.setDisplaySize(config.width, config.height);
+        bgImg.setDepth(0);
+        parallaxLayers = [{ layer: bgImg, factor: 0.05 }];
+        background.bgImage = bgImg;
+        return;
+    }
+
     const colors = {
         sky: 0x88c1ff,
         farTrees: 0x2d6a4f,
@@ -421,179 +436,168 @@ function resetGame(scene) {
 class Fighter {
     constructor(scene, x, y, type, color) {
         this.scene = scene;
-        this.type = type;
+        this.type = type;            // 'player' or 'npc'
         this.color = color;
-        
+
+        /* stats */
         this.maxHealth = 100;
         this.health = this.maxHealth;
         this.speed = 200;
         this.jumpForce = -500;
-        
+
+        /* state flags */
         this.isAttacking = false;
         this.attackCooldown = 0;
         this.isInvulnerable = false;
         this.invulnerableTime = 0;
         this.isDucking = false;
         this.facingLeft = type === 'npc';
-        
+
+        /* build sprite & hitbox */
         this.createSprite(x, y);
         this.createAttackHitbox();
-        
+
+        /* attacks */
         this.attackTypes = {
-            punch: { damage: 10, duration: 300, cooldown: 400, type: 'high', offsetX: 50, offsetY: -10, width: 40, height: 20 },
-            kick: { damage: 15, duration: 400, cooldown: 600, type: 'mid', offsetX: 60, offsetY: 0, width: 50, height: 30 },
-            duckPunch: { damage: 8, duration: 300, cooldown: 400, type: 'low', offsetX: 50, offsetY: 20, width: 40, height: 20 },
-            jumpKick: { damage: 20, duration: 400, cooldown: 600, type: 'high', offsetX: 60, offsetY: -20, width: 50, height: 30 }
+            punch:     { damage: 10, duration: 300, cooldown: 400, type: 'high', offsetX: 50, offsetY: -10, width: 40, height: 20 },
+            kick:      { damage: 15, duration: 400, cooldown: 600, type: 'mid',  offsetX: 60, offsetY:   0, width: 50, height: 30 },
+            duckPunch: { damage:  8, duration: 300, cooldown: 400, type: 'low',  offsetX: 50, offsetY:  20, width: 40, height: 20 },
+            jumpKick:  { damage: 20, duration: 400, cooldown: 600, type: 'high', offsetX: 60, offsetY: -20, width: 50, height: 30 }
         };
-        
         this.currentAttack = null;
-        
+
+        /* AI */
         if (type === 'npc') {
             this.aiState = 'approach';
             this.aiTimer = 0;
             this.aiDecisionTime = Phaser.Math.Between(500, 1500);
         }
     }
-    
+
+    /* -------------------------------------------------- */
+    /* Graphics / sprite                                   */
+    /* -------------------------------------------------- */
+
     createSprite(x, y) {
-        const bodyRadius = 30;
-        
-        const graphics = this.scene.add.graphics();
-        graphics.fillStyle(this.color, 1);
-        graphics.fillCircle(bodyRadius, bodyRadius, bodyRadius);
-        
-        graphics.fillStyle(0xffffff, 1);
-        graphics.fillCircle(bodyRadius-10, bodyRadius-10, 8);
-        graphics.fillCircle(bodyRadius+10, bodyRadius-10, 8);
-        
-        graphics.fillStyle(0x000000, 1);
-        graphics.fillCircle(bodyRadius-10, bodyRadius-10, 4);
-        graphics.fillCircle(bodyRadius+10, bodyRadius-10, 4);
-        
-        graphics.fillStyle(0x000000, 1);
-        graphics.fillRect(bodyRadius-15, bodyRadius+5, 30, 5);
-        
-        graphics.generateTexture(`fighter-${this.type}`, bodyRadius * 2, bodyRadius * 2);
-        graphics.destroy();
-        
-        this.sprite = this.scene.physics.add.sprite(x, y, `fighter-${this.type}`);
-        this.sprite.setCircle(bodyRadius);
+        const assetKey = this.type === 'player' ? 'playerSprite' : 'npcSprite';
+        let textureKey = assetKey;
+        this.bodyRadius = 30;
+
+        if (!this.scene.textures.exists(assetKey)) {
+            /* build fallback circular texture */
+            const g = this.scene.add.graphics();
+            g.fillStyle(this.color, 1);
+            g.fillCircle(this.bodyRadius, this.bodyRadius, this.bodyRadius);
+            g.fillStyle(0xffffff, 1);
+            g.fillCircle(this.bodyRadius - 10, this.bodyRadius - 10, 8);
+            g.fillCircle(this.bodyRadius + 10, this.bodyRadius - 10, 8);
+            g.fillStyle(0x000000, 1);
+            g.fillCircle(this.bodyRadius - 10, this.bodyRadius - 10, 4);
+            g.fillCircle(this.bodyRadius + 10, this.bodyRadius - 10, 4);
+            g.fillRect(this.bodyRadius - 15, this.bodyRadius + 5, 30, 5);
+            textureKey = `fighter-${this.type}`;
+            g.generateTexture(textureKey, this.bodyRadius * 2, this.bodyRadius * 2);
+            g.destroy();
+        }
+
+        this.sprite = this.scene.physics.add.sprite(x, y, textureKey);
         this.sprite.setBounce(0.1);
         this.sprite.setCollideWorldBounds(true);
-        this.sprite.body.setSize(bodyRadius * 1.5, bodyRadius * 2);
-        
-        if (this.facingLeft) {
-            this.sprite.flipX = true;
+
+        if (textureKey === assetKey) {
+            /* use rectangular body sized to sprite */
+            this.sprite.setBodySize(this.sprite.width * 0.6, this.sprite.height * 0.8, true);
+        } else {
+            /* circular body */
+            this.sprite.setCircle(this.bodyRadius);
+            this.sprite.body.setSize(this.bodyRadius * 1.5, this.bodyRadius * 2);
         }
-        
+
+        if (this.facingLeft) this.sprite.flipX = true;
+
         this.normalHeight = this.sprite.body.height;
         this.duckHeight = this.normalHeight * 0.6;
     }
-    
+
     createAttackHitbox() {
         this.attackHitbox = this.scene.physics.add.image(0, 0, 'particle');
-        this.attackHitbox.setVisible(false);
-        this.attackHitbox.setAlpha(0);
-        this.attackHitbox.setActive(false);
+        this.attackHitbox.setVisible(false).setAlpha(0).setActive(false);
         this.attackHitbox.body.allowGravity = false;
     }
-    
+
+    /* -------------------------------------------------- */
+    /* Player update                                      */
+    /* -------------------------------------------------- */
     update(controls) {
         if (this.type !== 'player' || gameState !== 'playing') return;
-        
         this.handleMovement(controls);
         this.handleAttacks(controls);
         this.updateTimers();
         this.updateAttackHitbox();
     }
-    
+
+    /* -------------------------------------------------- */
+    /* AI update                                          */
+    /* -------------------------------------------------- */
     updateAI(player) {
         if (this.type !== 'npc' || gameState !== 'playing') return;
-        
         this.aiTimer += this.scene.game.loop.delta;
-        
         if (this.aiTimer >= this.aiDecisionTime) {
             this.makeAIDecision(player);
             this.aiTimer = 0;
             this.aiDecisionTime = Phaser.Math.Between(500, 1500);
         }
-        
         this.executeAIAction(player);
         this.updateTimers();
         this.updateAttackHitbox();
     }
-    
+
     makeAIDecision(player) {
-        const distanceToPlayer = Math.abs(this.sprite.x - player.sprite.x);
-        const randomChoice = Math.random();
-        
-        if (distanceToPlayer > 200) {
+        const distance = Math.abs(this.sprite.x - player.sprite.x);
+        const rand = Math.random();
+
+        if (distance > 200) {
             this.aiState = 'approach';
-        } else if (distanceToPlayer < 100) {
-            if (randomChoice < 0.3) {
-                this.aiState = 'retreat';
-            } else if (randomChoice < 0.7) {
-                this.aiState = 'attack';
-            } else {
-                this.aiState = 'jump';
-            }
+        } else if (distance < 100) {
+            if (rand < 0.3) this.aiState = 'retreat';
+            else if (rand < 0.7) this.aiState = 'attack';
+            else this.aiState = 'jump';
         } else {
-            if (randomChoice < 0.6) {
-                this.aiState = 'attack';
-            } else if (randomChoice < 0.8) {
-                this.aiState = 'jump';
-            } else {
-                this.aiState = 'duck';
-            }
+            if (rand < 0.6) this.aiState = 'attack';
+            else if (rand < 0.8) this.aiState = 'jump';
+            else this.aiState = 'duck';
         }
-        
-        if (player.isAttacking && randomChoice > 0.5) {
-            this.aiState = 'duck';
-        }
+
+        /* favor duck if player is attacking */
+        if (player.isAttacking && Math.random() > 0.5) this.aiState = 'duck';
     }
-    
+
     executeAIAction(player) {
         const moveLeft = this.sprite.x > player.sprite.x;
         this.facingLeft = moveLeft;
         this.sprite.flipX = moveLeft;
-        
+
         switch (this.aiState) {
             case 'approach':
                 this.sprite.setVelocityX(moveLeft ? -this.speed : this.speed);
                 break;
-                
             case 'retreat':
                 this.sprite.setVelocityX(moveLeft ? this.speed : -this.speed);
                 break;
-                
             case 'attack':
                 if (!this.isAttacking && this.attackCooldown <= 0) {
-                    const attackChoice = Math.random();
-                    
-                    if (attackChoice < 0.5) {
-                        this.attack('punch');
-                    } else {
-                        this.attack('kick');
-                    }
+                    this.attack(Math.random() < 0.5 ? 'punch' : 'kick');
                 }
                 break;
-                
             case 'jump':
                 if (this.isGrounded()) {
                     this.sprite.setVelocityY(this.jumpForce);
-                    
-                    if (Math.random() > 0.5) {
-                        this.attack('jumpKick');
-                    }
+                    if (Math.random() > 0.5) this.attack('jumpKick');
                 }
                 break;
-                
             case 'duck':
                 this.duck(true);
-                
-                if (Math.random() > 0.7 && !this.isAttacking) {
-                    this.attack('duckPunch');
-                }
+                if (Math.random() > 0.7 && !this.isAttacking) this.attack('duckPunch');
                 break;
         }
     }
