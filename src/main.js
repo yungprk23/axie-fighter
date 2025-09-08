@@ -94,6 +94,39 @@ function update() {
     }
 }
 
+function makeWoodPlatformTexture(scene) {
+    if (scene.textures.exists('wood-plat')) return;
+    
+    const width = 220;
+    const height = 28;
+    const g = scene.add.graphics();
+    
+    // Draw base with border
+    g.fillStyle(0x8b5a2b, 1); // Base wood color
+    g.fillRoundedRect(0, 0, width, height, 6);
+    g.lineStyle(2, 0x5c3a1a, 1); // Dark border
+    g.strokeRoundedRect(0, 0, width, height, 6);
+    
+    // Add highlight on top
+    g.fillStyle(0xb77d44, 1); // Lighter wood color for highlight
+    g.fillRect(4, 2, width-8, 6);
+    
+    // Add vertical plank lines
+    g.lineStyle(1, 0x6d4524, 1);
+    for (let x = 30; x < width; x += 40) {
+        g.lineBetween(x, 2, x, height-2);
+    }
+    
+    // Add nail dots
+    g.fillStyle(0x444444, 1);
+    g.fillCircle(width/4, 8, 2);
+    g.fillCircle(width*3/4, 8, 2);
+    
+    // Generate texture and clean up
+    g.generateTexture('wood-plat', width, height);
+    g.destroy();
+}
+
 function chromaKeyTexture(scene, srcKey, dstKey, threshold=40) {
     // Check if source texture exists
     if (!scene.textures.exists(srcKey)) {
@@ -259,7 +292,7 @@ function updateParallax() {
 
 function createGround(scene) {
     const groundHeight = 160; // raised invisible floor
-    const groundY = config.height - groundHeight/2;
+    const groundY = config.height - groundHeight/2 - 10; // Move up by 10px
     // Invisible ground collider (no visible graphics)
     ground = scene.add.rectangle(config.width/2, groundY, config.width, groundHeight, 0x74c69d);
     scene.physics.add.existing(ground, true);
@@ -267,15 +300,30 @@ function createGround(scene) {
 }
 
 function createPlatforms(scene) {
+    // Clear any existing platforms
+    platforms = [];
+    
+    // Create wood texture if needed
+    makeWoodPlatformTexture(scene);
+    
+    // Platform specifications: position and width
     const specs = [
-        { x: config.width * 0.25, y: config.height * 0.62 },
-        { x: config.width * 0.50, y: config.height * 0.50 },
-        { x: config.width * 0.75, y: config.height * 0.62 }
+        { x: config.width * 0.25, y: config.height * 0.40, width: 240 },
+        { x: config.width * 0.50, y: config.height * 0.30, width: 280 },
+        { x: config.width * 0.75, y: config.height * 0.40, width: 240 }
     ];
-    specs.forEach(pos => {
-        const rect = scene.add.rectangle(pos.x, pos.y, 160, 12, 0x8B5A2B).setDepth(5);
-        scene.physics.add.existing(rect, true);
-        platforms.push(rect);
+    
+    // Create each platform
+    specs.forEach(spec => {
+        const img = scene.add.image(spec.x, spec.y, 'wood-plat');
+        img.setDisplaySize(spec.width, 28);
+        img.setDepth(5);
+        
+        // Add physics
+        scene.physics.add.existing(img, true);
+        img.body.setSize(spec.width, 28);
+        
+        platforms.push(img);
     });
 }
 
@@ -647,6 +695,10 @@ class Fighter {
 
         if (this.facingLeft) this.sprite.flipX = true;
 
+        // Store base scale for animations
+        this.baseScaleX = this.sprite.scaleX;
+        this.baseScaleY = this.sprite.scaleY;
+
         this.normalHeight = this.sprite.body.height;
         this.duckHeight = this.normalHeight * 0.6;
     }
@@ -795,12 +847,84 @@ class Fighter {
         this.isAttacking = true;
         this.currentAttack = this.attackTypes[attackType];
         
+        // Add animation
+        this.animateAttack(attackType);
+        
         this.scene.time.delayedCall(this.currentAttack.duration, () => {
             this.isAttacking = false;
             this.attackCooldown = this.currentAttack.cooldown;
             this.attackHitbox.setActive(false);
             this.attackHitbox.setVisible(false);
         });
+    }
+    
+    animateAttack(type) {
+        const dir = this.facingLeft ? -1 : 1;
+        
+        switch(type) {
+            case 'punch':
+                this.scene.tweens.add({
+                    targets: this.sprite,
+                    scaleX: this.baseScaleX * 1.12,
+                    scaleY: this.baseScaleY * 0.9,
+                    angle: 6 * dir,
+                    x: this.sprite.x + 6 * dir,
+                    duration: 120,
+                    yoyo: true,
+                    onComplete: () => {
+                        this.sprite.angle = 0;
+                        this.sprite.setScale(this.baseScaleX, this.baseScaleY);
+                    }
+                });
+                break;
+                
+            case 'kick':
+                this.scene.tweens.add({
+                    targets: this.sprite,
+                    scaleX: this.baseScaleX * 1.05,
+                    scaleY: this.baseScaleY * 0.95,
+                    angle: -10 * dir,
+                    x: this.sprite.x + 8 * dir,
+                    duration: 160,
+                    yoyo: true,
+                    onComplete: () => {
+                        this.sprite.angle = 0;
+                        this.sprite.setScale(this.baseScaleX, this.baseScaleY);
+                    }
+                });
+                break;
+                
+            case 'duckPunch':
+                this.scene.tweens.add({
+                    targets: this.sprite,
+                    scaleX: this.baseScaleX * 1.08,
+                    scaleY: this.baseScaleY * 0.88,
+                    angle: 4 * dir,
+                    x: this.sprite.x + 5 * dir,
+                    duration: 120,
+                    yoyo: true,
+                    onComplete: () => {
+                        this.sprite.angle = 0;
+                        this.sprite.setScale(this.baseScaleX, this.baseScaleY);
+                    }
+                });
+                break;
+                
+            case 'jumpKick':
+                this.scene.tweens.add({
+                    targets: this.sprite,
+                    angle: -18 * dir,
+                    scaleX: this.baseScaleX * 1.06,
+                    scaleY: this.baseScaleY * 0.94,
+                    duration: 200,
+                    yoyo: true,
+                    onComplete: () => {
+                        this.sprite.angle = 0;
+                        this.sprite.setScale(this.baseScaleX, this.baseScaleY);
+                    }
+                });
+                break;
+        }
     }
     
     updateAttackHitbox() {
@@ -872,6 +996,8 @@ class Fighter {
         this.sprite.setPosition(x, y);
         this.sprite.setVelocity(0, 0);
         this.sprite.clearTint();
+        this.sprite.angle = 0;
+        this.sprite.setScale(this.baseScaleX, this.baseScaleY);
         
         this.health = this.maxHealth;
         this.isAttacking = false;
