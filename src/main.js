@@ -1,8 +1,9 @@
 // Axie Fighter Game
+const BASE_WIDTH = 960;
+const BASE_HEIGHT = 540;
+
 const config = {
     type: Phaser.AUTO,
-    width: 960,
-    height: 540,
     backgroundColor: '#4a8f2b',
     physics: {
         default: 'arcade',
@@ -11,12 +12,23 @@ const config = {
             debug: false
         }
     },
+    scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+        parent: 'game-container',
+        width: BASE_WIDTH,
+        height: BASE_HEIGHT
+    },
     scene: {
         preload: preload,
         create: create,
         update: update
     }
 };
+
+// Preserve existing references in code that use config.width / config.height
+config.width = BASE_WIDTH;
+config.height = BASE_HEIGHT;
 
 const game = new Phaser.Game(config);
 
