@@ -346,6 +346,20 @@ function createFighters(scene) {
     scene.physics.add.collider(player.sprite, ground);
     scene.physics.add.collider(npc.sprite, ground);
 
+    // Prevent walking through each other: add sprite↔sprite collider
+    scene.physics.add.collider(player.sprite, npc.sprite, (p, n) => {
+        // Light bump when at least one is airborne
+        const pAir = !(p.body.blocked.down || p.body.touching.down);
+        const nAir = !(n.body.blocked.down || n.body.touching.down);
+        if (pAir || nAir) {
+            // Damp forward motion and give a tiny vertical bounce
+            p.setVelocityX(0.6 * p.body.velocity.x);
+            n.setVelocityX(0.6 * n.body.velocity.x);
+            if (pAir) p.setVelocityY(Math.min(p.body.velocity.y, -120));
+            if (nAir) n.setVelocityY(Math.min(n.body.velocity.y, -120));
+        }
+    });
+
     // platform colliders
     platforms.forEach(p => {
         scene.physics.add.collider(player.sprite, p);
