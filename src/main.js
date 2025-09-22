@@ -47,6 +47,7 @@ let helpVisible = false;
 let restartText;
 let winText;
 let controls = {};
+let rangedProjectiles = [];
 let background = {};
 let parallaxLayers = [];
 
@@ -87,6 +88,7 @@ function update() {
     if (gameState === 'playing') {
         updateParallax();
         updateFighters();
+        updateProjectiles();
         checkGameEnd();
     }
     
@@ -432,7 +434,7 @@ function handleAttackCollision(attacker, defender) {
     
     defender.takeDamage(attack.damage);
     // Impact: black & white star for player's punch, else default effect
-    if (attacker.type === 'player' && attacker.currentAttackName === 'punch') {
+    if (attacker.type === 'player' && attacker.currentAttackName === 'attack') {
         createBWImpact(defender.sprite.x, defender.sprite.y);
         freezeEntity(defender, 110);
     } else {
@@ -568,6 +570,58 @@ function applyHitstop(scene, ms) {
     window.setTimeout(() => { world.timeScale = prev; }, ms);
 }
 
+// ---------------- Ranged Projectiles ----------------
+function spawnRangedProjectile(owner, dir) {
+    const scene = owner.scene;
+    const startX = owner.sprite.x + dir * 28;
+    const startY = owner.sprite.y - 8;
+    const speed = 240; // slow enough to react
+
+    const body = scene.physics.add.image(startX, startY, 'particle').setVisible(false);
+    body.body.allowGravity = false;
+    body.setCircle(6);
+    body.setVelocityX(speed * dir);
+    body.setDepth(26);
+
+    const visual = scene.add.circle(startX, startY, 9, 0xffffff).setStrokeStyle(3, 0x000000).setDepth(26);
+    visual.alpha = 0.95;
+
+    const target = owner.type === 'player' ? npc : player;
+    const damage = owner.attackTypes.ranged.damage;
+    const onHit = () => {
+        if (!body.active) return;
+        target.takeDamage(damage);
+        createHitEffect(body.x, body.y);
+        freezeEntity(target, 90);
+        body.destroy();
+        visual.destroy();
+    };
+
+    scene.physics.add.overlap(body, target.sprite, onHit);
+
+    rangedProjectiles.push({ body, visual });
+    // Auto-destroy after 4s to be safe
+    scene.time.delayedCall(4000, () => {
+        if (body && body.active) body.destroy();
+        if (visual && visual.active) visual.destroy();
+    });
+}
+
+function updateProjectiles() {
+    for (let i = rangedProjectiles.length - 1; i >= 0; i--) {
+        const p = rangedProjectiles[i];
+        if (!p.body || !p.body.active) { rangedProjectiles.splice(i, 1); continue; }
+        p.visual.x = p.body.x;
+        p.visual.y = p.body.y;
+        // Remove if leaves screen bounds
+        if (p.body.x < -40 || p.body.x > config.width + 40 || p.body.y < -40 || p.body.y > config.height + 40) {
+            p.body.destroy();
+            p.visual.destroy();
+            rangedProjectiles.splice(i, 1);
+        }
+    }
+}
+
 function createUI(scene) {
     const barConfig = {
         width: 200,
@@ -642,8 +696,8 @@ function setupControls(scene) {
         right: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
         up: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
         down: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
-        punch: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.J),
-        kick: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.K),
+        attack: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.J),
+        ranged: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.K),
         help: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H),
         restart: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R)
     };
@@ -663,10 +717,9 @@ function createHelpOverlay(scene) {
         'A / D - Move left / right',
         'W - Jump',
         'S - Duck',
-        'J - Punch',
-        'K - Kick',
-        'S + J - Duck punch (low attack)',
-        'W + K - Jump kick (air attack)',
+        'J - Attack (melee)',
+        'K - Ranged attack (slow projectile)',
+        'S + J - Low attack (duck attack)',
         '',
         'Ducking avoids high attacks!',
         '',
@@ -772,10 +825,9 @@ class Fighter {
 
         /* attacks */
         this.attackTypes = {
-            punch:     { damage: 10, duration: 300, cooldown: 400, type: 'high', offsetX: 50, offsetY: -10, width: 40, height: 20 },
-            kick:      { damage: 15, duration: 400, cooldown: 600, type: 'mid',  offsetX: 60, offsetY:   0, width: 50, height: 30 },
-            duckPunch: { damage:  8, duration: 300, cooldown: 400, type: 'low',  offsetX: 50, offsetY:  20, width: 40, height: 20 },
-            jumpKick:  { damage: 20, duration: 400, cooldown: 600, type: 'high', offsetX: 60, offsetY: -20, width: 50, height: 30 }
+            attack:     { damage: 10, duration: 300, cooldown: 400, type: 'high', offsetX: 50, offsetY: -10, width: 40, height: 20 },
+            duckAttack: { damage:  8, duration: 300, cooldown: 400, type: 'low',  offsetX: 50, offsetY:  20, width: 40, height: 20 },
+            ranged:     { damage: 12, duration: 450, cooldown: 900, type: 'projectile', offsetX: 60, offsetY:  -6, width: 0,  height: 0 }
         };
         this.currentAttack = null;
 
@@ -927,18 +979,20 @@ class Fighter {
                 break;
             case 'attack':
                 if (!this.isAttacking && this.attackCooldown <= 0) {
-                    this.attack(Math.random() < 0.5 ? 'punch' : 'kick');
+                    const distance = Math.abs(this.sprite.x - player.sprite.x);
+                    const preferRanged = distance > 180 && Math.random() < 0.6;
+                    this.attack(preferRanged ? 'ranged' : 'attack');
                 }
                 break;
             case 'jump':
                 if (this.isGrounded()) {
                     this.sprite.setVelocityY(this.jumpForce);
-                    if (Math.random() > 0.5) this.attack('jumpKick');
+                    // sometimes do nothing midair to vary behavior
                 }
                 break;
             case 'duck':
                 this.duck(true);
-                if (Math.random() > 0.7 && !this.isAttacking) this.attack('duckPunch');
+                if (Math.random() > 0.7 && !this.isAttacking) this.attack('duckAttack');
                 break;
         }
     }
@@ -1066,18 +1120,11 @@ class Fighter {
     handleAttacks(controls) {
         if (this.isAttacking || this.attackCooldown > 0) return;
         
-        if (controls.punch.isDown) {
-            if (controls.down.isDown && this.isDucking) {
-                this.attack('duckPunch');
-            } else {
-                this.attack('punch');
-            }
-        } else if (controls.kick.isDown) {
-            if (controls.up.isDown && !this.isGrounded()) {
-                this.attack('jumpKick');
-            } else {
-                this.attack('kick');
-            }
+        if (controls.attack.isDown) {
+            if (controls.down.isDown && this.isDucking) this.attack('duckAttack');
+            else this.attack('attack');
+        } else if (Phaser.Input.Keyboard.JustDown(controls.ranged)) {
+            this.attack('ranged');
         }
     }
     
@@ -1104,7 +1151,7 @@ class Fighter {
         const dir = this.facingLeft ? -1 : 1;
         
         switch(type) {
-            case 'punch':
+            case 'attack':
                 // Exaggerated rotate and swerve streaks (black & white)
                 createPunchSwerve(this.sprite.x, this.sprite.y, dir, this.scene);
                 this.scene.tweens.add({
@@ -1121,26 +1168,9 @@ class Fighter {
                     }
                 });
                 break;
-                
-            case 'kick':
-                this.showWeaponTrail('kick', dir);
-                this.scene.tweens.add({
-                    targets: this.sprite,
-                    scaleX: this.baseScaleX * 1.05,
-                    scaleY: this.baseScaleY * 0.95,
-                    angle: -10 * dir,
-                    x: this.sprite.x + 8 * dir,
-                    duration: 160,
-                    yoyo: true,
-                    onComplete: () => {
-                        this.sprite.angle = 0;
-                        this.sprite.setScale(this.baseScaleX, this.baseScaleY);
-                    }
-                });
-                break;
-                
-            case 'duckPunch':
-                this.showWeaponTrail('duckPunch', dir);
+            
+            case 'duckAttack':
+                this.showWeaponTrail('duckAttack', dir);
                 this.scene.tweens.add({
                     targets: this.sprite,
                     scaleX: this.baseScaleX * 1.08,
@@ -1155,16 +1185,17 @@ class Fighter {
                     }
                 });
                 break;
-                
-            case 'jumpKick':
-                this.showWeaponTrail('jumpKick', dir);
+
+            case 'ranged':
+                // Wind-up then throw a slow projectile
                 this.scene.tweens.add({
                     targets: this.sprite,
-                    angle: -18 * dir,
                     scaleX: this.baseScaleX * 1.06,
                     scaleY: this.baseScaleY * 0.94,
-                    duration: 200,
+                    angle: 10 * dir,
+                    duration: 220,
                     yoyo: true,
+                    onStart: () => spawnRangedProjectile(this, dir),
                     onComplete: () => {
                         this.sprite.angle = 0;
                         this.sprite.setScale(this.baseScaleX, this.baseScaleY);
@@ -1222,14 +1253,14 @@ class Fighter {
         if (this.weaponBack) s.tweens.killTweensOf(this.weaponBack);
         const cfg = { duration: 120, yoyo: true, ease: 'Quad.easeOut' };
         if (this.type === 'player') {
-            if (type === 'punch' || type === 'duckPunch') {
+            if (type === 'attack' || type === 'duckAttack') {
                 s.tweens.add({ targets: this.weaponFront, angle: 60 * dir, x: this.weaponFront.x + 6 * dir, ...cfg });
-            } else if (type === 'kick' || type === 'jumpKick') {
+            } else if (type === 'ranged') {
                 s.tweens.add({ targets: this.weaponFront, angle: -20 * dir, ...cfg });
             }
         } else {
             // NPC sword sweep
-            const dur = type === 'kick' || type === 'jumpKick' ? 180 : 140;
+            const dur = type === 'attack' ? 140 : 180;
             s.tweens.add({ targets: this.weaponFront, angle: 90 * dir, duration: dur, yoyo: true, ease: 'Quad.easeInOut' });
         }
     }
@@ -1240,10 +1271,8 @@ class Fighter {
         // Colors and sizes
         const color = isPlayer ? 0xffa500 : 0x9cc9ff;
         const lenMap = {
-            punch: isPlayer ? 68 : 105,
-            duckPunch: isPlayer ? 60 : 95,
-            kick: isPlayer ? 76 : 120,
-            jumpKick: isPlayer ? 85 : 130
+            attack: isPlayer ? 68 : 105,
+            duckAttack: isPlayer ? 60 : 95
         };
         const thickness = isPlayer ? 12 : 10;
         const len = lenMap[kind] || 100;
@@ -1251,7 +1280,7 @@ class Fighter {
         const angleDelta = 90 * dir;
         const dur = 160;
         const ox = this.sprite.x + dir * 22;
-        const oy = this.sprite.y - (kind === 'duckPunch' ? -8 : 5);
+        const oy = this.sprite.y - (kind === 'duckAttack' ? -8 : 5);
 
         const img = scene.add.image(ox, oy, 'particle')
             .setOrigin(0, 0.5)
