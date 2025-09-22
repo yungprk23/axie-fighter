@@ -828,6 +828,7 @@ class Fighter {
             } else if (this.jumpCount < this.maxJumps) {
                 this.sprite.setVelocityY(this.jumpForce);
                 this.jumpCount++;
+                if (this.jumpCount === 2) this.onSecondJump();
             }
         }
         
@@ -837,6 +838,23 @@ class Fighter {
         const grounded = this.isGrounded();
         if (grounded && !this.wasGrounded) this.jumpCount = 0;
         this.wasGrounded = grounded;
+    }
+
+    onSecondJump() {
+        // 360 flip for the visual node
+        const node = this.container || this.rig || this.sprite;
+        if (!node) return;
+        const isContainer = node instanceof Phaser.GameObjects.Container;
+        const prop = isContainer ? 'rotation' : 'angle';
+        const current = isContainer ? node.rotation : node.angle;
+        const target = isContainer ? current + Math.PI * 2 : current + 360;
+        this.scene.tweens.killTweensOf(node);
+        this.scene.tweens.add({
+            targets: node,
+            [prop]: target,
+            duration: 280,
+            ease: 'Cubic.easeOut'
+        });
     }
     
     duck(isDucking) {
@@ -1125,22 +1143,22 @@ class RiggedFighter extends Fighter {
 
         if (type === 'punch' || type === 'duckPunch') {
             // Wind-up (parallel)
-            timeline.add({ targets: [uArm], angle: -35 * dir, duration: 90, ease: 'Quad.easeOut' });
-            timeline.add({ targets: [lArm], angle: -15 * dir, duration: 90, offset: 0 });
+            timeline.add({ targets: [uArm], rotation: Phaser.Math.DEG_TO_RAD * (-35 * dir), duration: 90, ease: 'Quad.easeOut' });
+            timeline.add({ targets: [lArm], rotation: Phaser.Math.DEG_TO_RAD * (-15 * dir), duration: 90, offset: 0 });
             // Release (parallel)
-            timeline.add({ targets: [uArm], angle: 50 * dir, duration: 110, ease: 'Quad.easeIn' });
-            timeline.add({ targets: [lArm], angle: 80 * dir, duration: 110, offset: 0 });
+            timeline.add({ targets: [uArm], rotation: Phaser.Math.DEG_TO_RAD * (50 * dir), duration: 110, ease: 'Quad.easeIn' });
+            timeline.add({ targets: [lArm], rotation: Phaser.Math.DEG_TO_RAD * (80 * dir), duration: 110, offset: 0 });
             // Recovery
-            timeline.add({ targets: [uArm, lArm], angle: 0, duration: 120, ease: 'Quad.easeOut' });
+            timeline.add({ targets: [uArm, lArm], rotation: 0, duration: 120, ease: 'Quad.easeOut' });
         } else if (type === 'kick' || type === 'jumpKick') {
             // Wind-up (parallel)
-            timeline.add({ targets: [uLeg], angle: 20 * dir, duration: 120, ease: 'Quad.easeOut' });
-            timeline.add({ targets: [lLeg], angle: 10 * dir, duration: 120, offset: 0 });
+            timeline.add({ targets: [uLeg], rotation: Phaser.Math.DEG_TO_RAD * (20 * dir), duration: 120, ease: 'Quad.easeOut' });
+            timeline.add({ targets: [lLeg], rotation: Phaser.Math.DEG_TO_RAD * (10 * dir), duration: 120, offset: 0 });
             // Release (parallel)
-            timeline.add({ targets: [uLeg], angle: -45 * dir, duration: 140, ease: 'Quad.easeIn' });
-            timeline.add({ targets: [lLeg], angle: -80 * dir, duration: 140, offset: 0 });
+            timeline.add({ targets: [uLeg], rotation: Phaser.Math.DEG_TO_RAD * (-45 * dir), duration: 140, ease: 'Quad.easeIn' });
+            timeline.add({ targets: [lLeg], rotation: Phaser.Math.DEG_TO_RAD * (-80 * dir), duration: 140, offset: 0 });
             // Recovery
-            timeline.add({ targets: [uLeg, lLeg], angle: 0, duration: 140, ease: 'Quad.easeOut' });
+            timeline.add({ targets: [uLeg, lLeg], rotation: 0, duration: 140, ease: 'Quad.easeOut' });
         }
 
         timeline.play();
@@ -1213,17 +1231,17 @@ class HybridFighter extends Fighter {
         this.torso.setDisplaySize(60, 48);
         this.head  = scene.add.circle(0, -44, 22, main).setStrokeStyle(2, dark).setAlpha(0.25).setDepth(7);
 
-        // Arms
-        this.uArmL = makeSegment(30, 10, dark); this.uArmL.x = -28; this.uArmL.y = -10;
-        this.lArmL = makeSegment(26, 8, dark);  this.lArmL.x = 30;  this.lArmL.y = 0; this.uArmL.add(this.lArmL);
-        this.uArmR = makeSegment(30, 10, dark); this.uArmR.x =  28; this.uArmR.y = -10;
-        this.lArmR = makeSegment(26, 8, dark);  this.lArmR.x = 30;  this.lArmR.y = 0; this.uArmR.add(this.lArmR);
+        // Arms (start hidden; show only during attacks)
+        this.uArmL = makeSegment(30, 10, dark); this.uArmL.x = -28; this.uArmL.y = -10; this.uArmL.alpha = 0;
+        this.lArmL = makeSegment(26, 8, dark);  this.lArmL.x = 30;  this.lArmL.y = 0; this.lArmL.alpha = 0; this.uArmL.add(this.lArmL);
+        this.uArmR = makeSegment(30, 10, dark); this.uArmR.x =  28; this.uArmR.y = -10; this.uArmR.alpha = 0;
+        this.lArmR = makeSegment(26, 8, dark);  this.lArmR.x = 30;  this.lArmR.y = 0; this.lArmR.alpha = 0; this.uArmR.add(this.lArmR);
 
-        // Legs
-        this.uLegL = makeSegment(30, 12, dark); this.uLegL.x = -15; this.uLegL.y = 26;
-        this.lLegL = makeSegment(26, 10, dark); this.lLegL.x = 30;  this.lLegL.y = 0; this.uLegL.add(this.lLegL);
-        this.uLegR = makeSegment(30, 12, dark); this.uLegR.x =  15; this.uLegR.y = 26;
-        this.lLegR = makeSegment(26, 10, dark); this.lLegR.x = 30;  this.lLegR.y = 0; this.uLegR.add(this.lLegR);
+        // Legs (slightly visible to suggest feet)
+        this.uLegL = makeSegment(30, 12, dark); this.uLegL.x = -15; this.uLegL.y = 26; this.uLegL.alpha = 0.6;
+        this.lLegL = makeSegment(26, 10, dark); this.lLegL.x = 30;  this.lLegL.y = 0; this.lLegL.alpha = 0.6; this.uLegL.add(this.lLegL);
+        this.uLegR = makeSegment(30, 12, dark); this.uLegR.x =  15; this.uLegR.y = 26; this.uLegR.alpha = 0.6;
+        this.lLegR = makeSegment(26, 10, dark); this.lLegR.x = 30;  this.lLegR.y = 0; this.lLegR.alpha = 0.6; this.uLegR.add(this.lLegR);
 
         this.container.add([this.torso, this.head, this.uArmL, this.uArmR, this.uLegL, this.uLegR]);
     }
@@ -1249,19 +1267,23 @@ class HybridFighter extends Fighter {
         const lLeg = isFrontLeft ? this.lLegL : this.lLegR;
 
         const timeline = this.scene.tweens.createTimeline();
+        const showArms = () => { this.uArmL.alpha = this.lArmL.alpha = this.uArmR.alpha = this.lArmR.alpha = 1; };
+        const hideArms = () => { this.uArmL.alpha = this.lArmL.alpha = this.uArmR.alpha = this.lArmR.alpha = 0; };
+        showArms();
         if (type === 'punch' || type === 'duckPunch') {
-            timeline.add({ targets: [uArm], angle: -35 * dir, duration: 90, ease: 'Quad.easeOut' });
-            timeline.add({ targets: [lArm], angle: -15 * dir, duration: 90, offset: 0 });
-            timeline.add({ targets: [uArm], angle: 50 * dir, duration: 110, ease: 'Quad.easeIn' });
-            timeline.add({ targets: [lArm], angle: 80 * dir, duration: 110, offset: 0 });
-            timeline.add({ targets: [uArm, lArm], angle: 0, duration: 120, ease: 'Quad.easeOut' });
+            timeline.add({ targets: [uArm], rotation: Phaser.Math.DEG_TO_RAD * (-35 * dir), duration: 90, ease: 'Quad.easeOut' });
+            timeline.add({ targets: [lArm], rotation: Phaser.Math.DEG_TO_RAD * (-15 * dir), duration: 90, offset: 0 });
+            timeline.add({ targets: [uArm], rotation: Phaser.Math.DEG_TO_RAD * (50 * dir), duration: 110, ease: 'Quad.easeIn' });
+            timeline.add({ targets: [lArm], rotation: Phaser.Math.DEG_TO_RAD * (80 * dir), duration: 110, offset: 0 });
+            timeline.add({ targets: [uArm, lArm], rotation: 0, duration: 120, ease: 'Quad.easeOut' });
         } else if (type === 'kick' || type === 'jumpKick') {
-            timeline.add({ targets: [uLeg], angle: 20 * dir, duration: 120, ease: 'Quad.easeOut' });
-            timeline.add({ targets: [lLeg], angle: 10 * dir, duration: 120, offset: 0 });
-            timeline.add({ targets: [uLeg], angle: -45 * dir, duration: 140, ease: 'Quad.easeIn' });
-            timeline.add({ targets: [lLeg], angle: -80 * dir, duration: 140, offset: 0 });
-            timeline.add({ targets: [uLeg, lLeg], angle: 0, duration: 140, ease: 'Quad.easeOut' });
+            timeline.add({ targets: [uLeg], rotation: Phaser.Math.DEG_TO_RAD * (20 * dir), duration: 120, ease: 'Quad.easeOut' });
+            timeline.add({ targets: [lLeg], rotation: Phaser.Math.DEG_TO_RAD * (10 * dir), duration: 120, offset: 0 });
+            timeline.add({ targets: [uLeg], rotation: Phaser.Math.DEG_TO_RAD * (-45 * dir), duration: 140, ease: 'Quad.easeIn' });
+            timeline.add({ targets: [lLeg], rotation: Phaser.Math.DEG_TO_RAD * (-80 * dir), duration: 140, offset: 0 });
+            timeline.add({ targets: [uLeg, lLeg], rotation: 0, duration: 140, ease: 'Quad.easeOut' });
         }
+        timeline.setCallback('onComplete', hideArms);
         timeline.play();
     }
 
