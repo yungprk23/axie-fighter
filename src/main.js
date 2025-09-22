@@ -294,12 +294,17 @@ function updateParallax() {
 }
 
 function createGround(scene) {
-    const groundHeight = 160; // invisible floor
-    const groundY = config.height - groundHeight/2 - 2; // slightly lower than before
-    // Invisible ground collider (no visible graphics)
-    ground = scene.add.rectangle(config.width/2, groundY, config.width, groundHeight, 0x74c69d);
+    // Make the ground a visible wooden bridge using the same texture as ledges
+    makeWoodPlatformTexture(scene);
+    const BRIDGE_HEIGHT = 36;
+    const BRIDGE_WIDTH = Math.floor(config.width * 0.92);
+    // Position so the top is slightly lower than before (more room above)
+    const topY = 390; // previous ~378; lowered a bit
+    const y = topY + BRIDGE_HEIGHT / 2;
+    ground = scene.add.tileSprite(config.width / 2, y, BRIDGE_WIDTH, BRIDGE_HEIGHT, 'wood-plat');
+    ground.setDepth(5);
     scene.physics.add.existing(ground, true);
-    ground.setVisible(false);
+    ground.body.setSize(BRIDGE_WIDTH, BRIDGE_HEIGHT);
 }
 
 // Helper: snap a fighter sprite onto the invisible floor top
@@ -395,7 +400,13 @@ function handleAttackCollision(attacker, defender) {
     }
     
     defender.takeDamage(attack.damage);
-    createHitEffect(defender.sprite.x, defender.sprite.y);
+    // Impact: black & white star for player's punch, else default effect
+    if (attacker.type === 'player' && attacker.currentAttackName === 'punch') {
+        createBWImpact(defender.sprite.x, defender.sprite.y);
+        freezeEntity(defender, 110);
+    } else {
+        createHitEffect(defender.sprite.x, defender.sprite.y);
+    }
     // Light camera shake and hitstop for impact
     const cam = attacker.scene.cameras.main;
     cam.shake(80, 0.003);
@@ -406,15 +417,16 @@ function handleAttackCollision(attacker, defender) {
 
 function createHitEffect(x, y) {
     const scene = game.scene.scenes[0];
-    const count = 16;
+    // Neutral default: small grey burst
+    const count = 12;
     for (let i = 0; i < count; i++) {
         const sprite = scene.add.image(x, y, 'particle')
-            .setTint(0xff0000)
+            .setTint(0xdddddd)
             .setDepth(25)
             .setScale(1)
             .setAlpha(1);
         const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-        const distance = Phaser.Math.Between(40, 100);
+        const distance = Phaser.Math.Between(40, 90);
         const dx = Math.cos(angle) * distance;
         const dy = Math.sin(angle) * distance;
         scene.tweens.add({
@@ -424,7 +436,7 @@ function createHitEffect(x, y) {
             alpha: 0,
             scale: 0,
             ease: 'Cubic.easeOut',
-            duration: 300,
+            duration: 260,
             onComplete: () => sprite.destroy()
         });
     }
@@ -454,6 +466,68 @@ function createDodgeEffect(x, y) {
             onComplete: () => sprite.destroy()
         });
     }
+}
+
+function createBWImpact(x, y) {
+    const scene = game.scene.scenes[0];
+    const angles = [0, 60, 120];
+    angles.forEach((a, i) => {
+        [0x000000, 0xffffff].forEach((color, j) => {
+            const len = 70 + i * 10 - j * 6;
+            const img = scene.add.image(x, y, 'particle')
+                .setOrigin(0, 0.5)
+                .setDepth(26)
+                .setTint(color)
+                .setAlpha(1);
+            img.setDisplaySize(len, 8 - i);
+            img.angle = a + (j ? 15 : -15);
+            scene.tweens.add({
+                targets: img,
+                alpha: 0,
+                scaleX: 0.6,
+                ease: 'Cubic.easeOut',
+                duration: 200,
+                onComplete: () => img.destroy()
+            });
+        });
+    });
+}
+
+function createPunchSwerve(x, y, dir, scene) {
+    const ox = x + 22 * dir;
+    const oy = y - 4;
+    const colors = [0x000000, 0xffffff, 0x000000, 0xffffff];
+    const angles = [-20, 0, 20, 40].map(a => a * dir);
+    colors.forEach((c, idx) => {
+        const img = scene.add.image(ox, oy, 'particle')
+            .setOrigin(0, 0.5)
+            .setDepth(26)
+            .setTint(c)
+            .setAlpha(0.95);
+        const len = 60 + idx * 10;
+        img.setDisplaySize(len, 10 - idx);
+        img.angle = angles[idx];
+        scene.tweens.add({
+            targets: img,
+            angle: img.angle + (40 * dir),
+            x: ox + 16 * dir,
+            alpha: 0,
+            ease: 'Quad.easeOut',
+            duration: 160,
+            onComplete: () => img.destroy()
+        });
+    });
+}
+
+function freezeEntity(fighter, ms) {
+    const body = fighter.sprite.body;
+    const vx = body.velocity.x;
+    const vy = body.velocity.y;
+    body.moves = false;
+    fighter.scene.time.delayedCall(ms, () => {
+        body.moves = true;
+        fighter.sprite.setVelocity(vx, vy);
+    });
 }
 
 function applyHitstop(scene, ms) {
@@ -927,6 +1001,7 @@ class Fighter {
         
         this.isAttacking = true;
         this.currentAttack = this.attackTypes[attackType];
+        this.currentAttackName = attackType;
         
         // Add animation
         this.animateAttack(attackType);
@@ -945,14 +1020,15 @@ class Fighter {
         
         switch(type) {
             case 'punch':
-                this.showWeaponTrail('punch', dir);
+                // Exaggerated rotate and swerve streaks (black & white)
+                createPunchSwerve(this.sprite.x, this.sprite.y, dir, this.scene);
                 this.scene.tweens.add({
                     targets: this.sprite,
-                    scaleX: this.baseScaleX * 1.12,
-                    scaleY: this.baseScaleY * 0.9,
-                    angle: 6 * dir,
-                    x: this.sprite.x + 6 * dir,
-                    duration: 120,
+                    scaleX: this.baseScaleX * 1.15,
+                    scaleY: this.baseScaleY * 0.88,
+                    angle: 28 * dir,
+                    x: this.sprite.x + 10 * dir,
+                    duration: 130,
                     yoyo: true,
                     onComplete: () => {
                         this.sprite.angle = 0;
@@ -1017,11 +1093,9 @@ class Fighter {
     createWeapon() {
         const s = this.scene;
         if (this.type === 'player') {
-            // Two gauntlets
-            this.weaponFront = s.add.image(0, 0, 'particle').setTint(0xffa500).setDepth(26);
-            this.weaponFront.setDisplaySize(28, 10).setOrigin(0.5);
-            this.weaponBack = s.add.image(0, 0, 'particle').setTint(0xffa500).setDepth(25);
-            this.weaponBack.setDisplaySize(22, 8).setOrigin(0.5).setAlpha(0.9);
+            // Two fists (white with black outline)
+            this.weaponFront = s.add.circle(0, 0, 8, 0xffffff).setStrokeStyle(3, 0x000000).setDepth(26);
+            this.weaponBack  = s.add.circle(0, 0, 7, 0xffffff).setStrokeStyle(3, 0x000000).setDepth(25).setAlpha(0.95);
         } else {
             // Sword (blade)
             this.weaponFront = s.add.image(0, 0, 'particle').setTint(0xcde7ff).setDepth(26);
