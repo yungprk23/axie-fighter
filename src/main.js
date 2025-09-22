@@ -32,6 +32,9 @@ config.height = BASE_HEIGHT;
 
 const game = new Phaser.Game(config);
 
+// Debug/visualization flags
+const SHOW_HITBOXES = true; // show attack hitboxes as overlays
+
 let player, npc;
 let ground;
 let platforms = [];
@@ -337,7 +340,7 @@ function createPlatforms(scene) {
 
 function createFighters(scene) {
     // temporary y, will adjust after bodies ready
-    player = new Fighter(scene, 300, 0, 'player', 0xffa500);
+    player = new RiggedFighter(scene, 300, 0, 'player', 0xffa500);
     npc   = new Fighter(scene, 660, 0, 'npc',   0x52b788);
     
     scene.physics.add.collider(player.sprite, ground);
@@ -623,6 +626,8 @@ class Fighter {
         this.invulnerableTime = 0;
         this.isDucking = false;
         this.facingLeft = type === 'npc';
+        this.jumpCount = 0;
+        this.maxJumps = 2; // double jump
 
         /* build sprite & hitbox */
         this.createSprite(x, y);
@@ -814,11 +819,21 @@ class Fighter {
             this.sprite.setVelocityX(0);
         }
         
-        if (controls.up.isDown && this.isGrounded()) {
-            this.sprite.setVelocityY(this.jumpForce);
+        // Double jump on W taps
+        if (Phaser.Input.Keyboard.JustDown(controls.up)) {
+            if (this.isGrounded()) {
+                this.sprite.setVelocityY(this.jumpForce);
+                this.jumpCount = 1;
+            } else if (this.jumpCount < this.maxJumps) {
+                this.sprite.setVelocityY(this.jumpForce);
+                this.jumpCount++;
+            }
         }
         
         this.duck(controls.down.isDown);
+
+        // Reset jump counter on landing
+        if (this.isGrounded()) this.jumpCount = 0;
     }
     
     duck(isDucking) {
@@ -958,10 +973,7 @@ class Fighter {
             );
             
             this.attackHitbox.setActive(true);
-            
-            if (config.physics.arcade.debug) {
-                this.attackHitbox.setVisible(true);
-            }
+            this.attackHitbox.setVisible(SHOW_HITBOXES);
         }
     }
     
@@ -1022,5 +1034,119 @@ class Fighter {
             this.aiState = 'approach';
             this.aiTimer = 0;
         }
+    }
+}
+
+// Player-only rigged fighter with articulated limbs for fluid attacks
+class RiggedFighter extends Fighter {
+    createSprite(x, y) {
+        // Invisible physics body
+        this.sprite = this.scene.physics.add.image(x, y, 'particle').setAlpha(0.0001);
+        this.sprite.setBounce(0.1);
+        this.sprite.setCollideWorldBounds(true);
+        // Physics body size
+        this.sprite.body.setSize(44, 60);
+
+        // Base scale reference for compatibility
+        this.baseScaleX = 1;
+        this.baseScaleY = 1;
+
+        this.normalHeight = this.sprite.body.height;
+        this.duckHeight = this.normalHeight * 0.6;
+
+        // Build rig graphics
+        this.buildRig();
+    }
+
+    buildRig() {
+        const scene = this.scene;
+        const main = this.color;
+        const dark = Phaser.Display.Color.GetColor(
+            Math.max(0, (main >> 16) - 30),
+            Math.max(0, ((main >> 8) & 0xff) - 30),
+            Math.max(0, (main & 0xff) - 30)
+        );
+
+        const makeSegment = (length, thick, tint) => {
+            const seg = scene.add.image(0, 0, 'particle').setTint(tint).setDepth(7);
+            seg.setDisplaySize(length, thick).setOrigin(0, 0.5);
+            const c = scene.add.container(0, 0, [seg]);
+            c.setDepth(7);
+            return c;
+        };
+
+        this.rig = scene.add.container(this.sprite.x, this.sprite.y).setDepth(7);
+
+        // Torso and head
+        this.torso = scene.add.image(0, 5, 'particle').setTint(main).setDepth(7);
+        this.torso.setDisplaySize(60, 48);
+        this.head = scene.add.circle(0, -44, 22, main).setStrokeStyle(2, dark);
+        this.head.setDepth(7);
+
+        // Arms
+        this.uArmL = makeSegment(30, 10, dark); this.uArmL.x = -28; this.uArmL.y = -10;
+        this.lArmL = makeSegment(26, 8, dark);  this.lArmL.x = 30;  this.lArmL.y = 0; this.uArmL.add(this.lArmL);
+        this.uArmR = makeSegment(30, 10, dark); this.uArmR.x =  28; this.uArmR.y = -10;
+        this.lArmR = makeSegment(26, 8, dark);  this.lArmR.x = 30;  this.lArmR.y = 0; this.uArmR.add(this.lArmR);
+
+        // Legs
+        this.uLegL = makeSegment(30, 12, dark); this.uLegL.x = -15; this.uLegL.y = 26;
+        this.lLegL = makeSegment(26, 10, dark); this.lLegL.x = 30;  this.lLegL.y = 0; this.uLegL.add(this.lLegL);
+        this.uLegR = makeSegment(30, 12, dark); this.uLegR.x =  15; this.uLegR.y = 26;
+        this.lLegR = makeSegment(26, 10, dark); this.lLegR.x = 30;  this.lLegR.y = 0; this.uLegR.add(this.lLegR);
+
+        this.rig.add([this.torso, this.head, this.uArmL, this.uArmR, this.uLegL, this.uLegR]);
+    }
+
+    syncRig() {
+        this.rig.x = this.sprite.x;
+        this.rig.y = this.sprite.y;
+        this.rig.scaleX = this.facingLeft ? -1 : 1;
+    }
+
+    update(controls) {
+        super.update(controls);
+        this.syncRig();
+    }
+
+    animateAttack(type) {
+        const dir = this.facingLeft ? -1 : 1;
+        const isFrontLeft = this.facingLeft;
+        const uArm = isFrontLeft ? this.uArmL : this.uArmR;
+        const lArm = isFrontLeft ? this.lArmL : this.lArmR;
+        const uLeg = isFrontLeft ? this.uLegL : this.uLegR;
+        const lLeg = isFrontLeft ? this.lLegL : this.lLegR;
+
+        const timeline = this.scene.tweens.createTimeline();
+
+        if (type === 'punch' || type === 'duckPunch') {
+            // Wind-up
+            timeline.add({ targets: [uArm], angle: -35 * dir, duration: 90, ease: 'Quad.easeOut' });
+            timeline.add({ targets: [lArm], angle: -15 * dir, duration: 90, at: 0 });
+            // Release
+            timeline.add({ targets: [uArm], angle: 50 * dir, duration: 110, ease: 'Quad.easeIn' });
+            timeline.add({ targets: [lArm], angle: 80 * dir, duration: 110, at: '>=-110' });
+            // Recovery
+            timeline.add({ targets: [uArm, lArm], angle: 0, duration: 120, ease: 'Quad.easeOut' });
+        } else if (type === 'kick' || type === 'jumpKick') {
+            // Wind-up
+            timeline.add({ targets: [uLeg], angle: 20 * dir, duration: 120, ease: 'Quad.easeOut' });
+            timeline.add({ targets: [lLeg], angle: 10 * dir, duration: 120, at: 0 });
+            // Release
+            timeline.add({ targets: [uLeg], angle: -45 * dir, duration: 140, ease: 'Quad.easeIn' });
+            timeline.add({ targets: [lLeg], angle: -80 * dir, duration: 140, at: '>=-140' });
+            // Recovery
+            timeline.add({ targets: [uLeg, lLeg], angle: 0, duration: 140, ease: 'Quad.easeOut' });
+        }
+
+        timeline.play();
+    }
+
+    reset(x, y) {
+        super.reset(x, y);
+        // Reset rig transforms
+        [this.uArmL, this.lArmL, this.uArmR, this.lArmR, this.uLegL, this.lLegL, this.uLegR, this.lLegR]
+            .forEach(n => { if (n) n.angle = 0; });
+        this.syncRig();
     }
 }
