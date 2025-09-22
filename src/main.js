@@ -742,6 +742,9 @@ class Fighter {
 
         this.normalHeight = this.sprite.body.height;
         this.duckHeight = this.normalHeight * 0.6;
+
+        // Always-visible procedural weapons
+        this.createWeapon();
     }
 
     createAttackHitbox() {
@@ -759,6 +762,7 @@ class Fighter {
         this.handleAttacks(controls);
         this.updateTimers();
         this.updateAttackHitbox();
+        this.updateWeapon();
     }
 
     /* -------------------------------------------------- */
@@ -775,6 +779,7 @@ class Fighter {
         this.executeAIAction(player);
         this.updateTimers();
         this.updateAttackHitbox();
+        this.updateWeapon();
     }
 
     makeAIDecision(player) {
@@ -921,6 +926,7 @@ class Fighter {
         
         // Add animation
         this.animateAttack(attackType);
+        this.animateWeapon(attackType);
         
         this.scene.time.delayedCall(this.currentAttack.duration, () => {
             this.isAttacking = false;
@@ -1000,6 +1006,68 @@ class Fighter {
                     }
                 });
                 break;
+        }
+    }
+
+    /* ---------------- Weapons (always visible) ---------------- */
+    createWeapon() {
+        const s = this.scene;
+        if (this.type === 'player') {
+            // Two gauntlets
+            this.weaponFront = s.add.image(0, 0, 'particle').setTint(0xffa500).setDepth(26);
+            this.weaponFront.setDisplaySize(36, 12).setOrigin(0.5);
+            this.weaponBack = s.add.image(0, 0, 'particle').setTint(0xffa500).setDepth(25);
+            this.weaponBack.setDisplaySize(28, 10).setOrigin(0.5).setAlpha(0.9);
+        } else {
+            // Sword (blade)
+            this.weaponFront = s.add.image(0, 0, 'particle').setTint(0xcde7ff).setDepth(26);
+            this.weaponFront.setDisplaySize(100, 8).setOrigin(0, 0.5);
+            // Simple hilt/guard
+            this.weaponBack = s.add.image(0, 0, 'particle').setTint(0x555555).setDepth(26);
+            this.weaponBack.setDisplaySize(14, 12).setOrigin(0.5);
+        }
+        this.updateWeapon();
+    }
+
+    updateWeapon() {
+        if (!this.weaponFront) return;
+        const dir = this.facingLeft ? -1 : 1;
+        if (this.type === 'player') {
+            const x1 = this.sprite.x + dir * 30;
+            const y1 = this.sprite.y - 6;
+            const x2 = this.sprite.x + dir * 14;
+            const y2 = this.sprite.y + 10;
+            this.weaponFront.setPosition(x1, y1);
+            this.weaponBack.setPosition(x2, y2);
+            this.weaponFront.angle = 8 * dir;
+            this.weaponBack.angle = 2 * dir;
+        } else {
+            const x = this.sprite.x + dir * 40;
+            const y = this.sprite.y - 10;
+            this.weaponFront.setPosition(x, y);
+            this.weaponBack.setPosition(this.sprite.x + dir * 32, this.sprite.y - 10);
+            this.weaponFront.angle = 10 * dir;
+            this.weaponBack.angle = 90 * dir;
+        }
+    }
+
+    animateWeapon(type) {
+        if (!this.weaponFront) return;
+        const dir = this.facingLeft ? -1 : 1;
+        const s = this.scene;
+        s.tweens.killTweensOf(this.weaponFront);
+        if (this.weaponBack) s.tweens.killTweensOf(this.weaponBack);
+        const cfg = { duration: 120, yoyo: true, ease: 'Quad.easeOut' };
+        if (this.type === 'player') {
+            if (type === 'punch' || type === 'duckPunch') {
+                s.tweens.add({ targets: this.weaponFront, angle: 60 * dir, x: this.weaponFront.x + 6 * dir, ...cfg });
+            } else if (type === 'kick' || type === 'jumpKick') {
+                s.tweens.add({ targets: this.weaponFront, angle: -20 * dir, ...cfg });
+            }
+        } else {
+            // NPC sword sweep
+            const dur = type === 'kick' || type === 'jumpKick' ? 180 : 140;
+            s.tweens.add({ targets: this.weaponFront, angle: 90 * dir, duration: dur, yoyo: true, ease: 'Quad.easeInOut' });
         }
     }
 
