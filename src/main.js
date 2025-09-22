@@ -33,7 +33,7 @@ config.height = BASE_HEIGHT;
 const game = new Phaser.Game(config);
 
 // Debug/visualization flags
-const SHOW_HITBOXES = true; // show attack hitboxes as overlays
+const SHOW_HITBOXES = false; // dev hitboxes off per request
 
 let player, npc;
 let ground;
@@ -396,6 +396,10 @@ function handleAttackCollision(attacker, defender) {
     
     defender.takeDamage(attack.damage);
     createHitEffect(defender.sprite.x, defender.sprite.y);
+    // Light camera shake and hitstop for impact
+    const cam = attacker.scene.cameras.main;
+    cam.shake(80, 0.003);
+    applyHitstop(attacker.scene, 80);
     
     attacker.isAttacking = false;
 }
@@ -450,6 +454,13 @@ function createDodgeEffect(x, y) {
             onComplete: () => sprite.destroy()
         });
     }
+}
+
+function applyHitstop(scene, ms) {
+    const world = scene.physics.world;
+    const prev = world.timeScale;
+    world.timeScale = 0.01;
+    window.setTimeout(() => { world.timeScale = prev; }, ms);
 }
 
 function createUI(scene) {
@@ -924,6 +935,7 @@ class Fighter {
         
         switch(type) {
             case 'punch':
+                this.showWeaponTrail('punch', dir);
                 this.scene.tweens.add({
                     targets: this.sprite,
                     scaleX: this.baseScaleX * 1.12,
@@ -940,6 +952,7 @@ class Fighter {
                 break;
                 
             case 'kick':
+                this.showWeaponTrail('kick', dir);
                 this.scene.tweens.add({
                     targets: this.sprite,
                     scaleX: this.baseScaleX * 1.05,
@@ -956,6 +969,7 @@ class Fighter {
                 break;
                 
             case 'duckPunch':
+                this.showWeaponTrail('duckPunch', dir);
                 this.scene.tweens.add({
                     targets: this.sprite,
                     scaleX: this.baseScaleX * 1.08,
@@ -972,6 +986,7 @@ class Fighter {
                 break;
                 
             case 'jumpKick':
+                this.showWeaponTrail('jumpKick', dir);
                 this.scene.tweens.add({
                     targets: this.sprite,
                     angle: -18 * dir,
@@ -986,6 +1001,43 @@ class Fighter {
                 });
                 break;
         }
+    }
+
+    showWeaponTrail(kind, dir) {
+        const scene = this.scene;
+        const isPlayer = this.type === 'player';
+        // Colors and sizes
+        const color = isPlayer ? 0xffa500 : 0x9cc9ff;
+        const lenMap = {
+            punch: isPlayer ? 80 : 120,
+            duckPunch: isPlayer ? 70 : 110,
+            kick: isPlayer ? 90 : 140,
+            jumpKick: isPlayer ? 100 : 150
+        };
+        const thickness = isPlayer ? 16 : 12;
+        const len = lenMap[kind] || 100;
+        const angleStart = -40 * dir;
+        const angleDelta = 90 * dir;
+        const dur = 160;
+        const ox = this.sprite.x + dir * 24;
+        const oy = this.sprite.y - (kind === 'duckPunch' ? -10 : 6);
+
+        const img = scene.add.image(ox, oy, 'particle')
+            .setOrigin(0, 0.5)
+            .setDepth(24)
+            .setBlendMode(Phaser.BlendModes.ADD)
+            .setTint(color)
+            .setAlpha(0.9);
+        img.setDisplaySize(len, thickness);
+        img.angle = angleStart;
+        scene.tweens.add({
+            targets: img,
+            angle: angleStart + angleDelta,
+            alpha: 0,
+            ease: 'Cubic.easeOut',
+            duration: dur,
+            onComplete: () => img.destroy()
+        });
     }
     
     updateAttackHitbox() {
