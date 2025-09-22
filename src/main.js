@@ -306,8 +306,8 @@ function createGround(scene) {
     makeWoodPlatformTexture(scene);
     const BRIDGE_HEIGHT = 22; // thinner bridge
     const BRIDGE_WIDTH = config.width; // full width
-    // Move slightly down for more space above
-    const topY = 404; // was ~390
+    // Move slightly further down for more space above
+    const topY = 418; // was 404
     const y = topY + BRIDGE_HEIGHT / 2;
     ground = scene.add.tileSprite(config.width / 2, y, BRIDGE_WIDTH, BRIDGE_HEIGHT, 'wood-plat');
     ground.setDepth(5);
@@ -998,8 +998,12 @@ class Fighter {
     }
     
     handleMovement(controls) {
-        if (this.isAttacking || this.isSomersault) {
+        if (this.isAttacking) {
             this.sprite.setVelocityX(0);
+            return;
+        }
+        if (this.isSomersault) {
+            // Let existing X velocity carry the roll forward
             return;
         }
         // Double‑tap detection to trigger somersault (ground only)
@@ -1340,6 +1344,14 @@ class Fighter {
                 this.isInvulnerable = false;
                 this.sprite.clearTint();
             }
+        }
+
+        // Safety: clamp runaway horizontal velocity when not somersaulting
+        const maxVX = 600;
+        if (!this.isSomersault) {
+            const vx = this.sprite.body.velocity.x;
+            if (vx > maxVX) this.sprite.setVelocityX(maxVX);
+            else if (vx < -maxVX) this.sprite.setVelocityX(-maxVX);
         }
     }
     
