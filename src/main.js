@@ -38,6 +38,7 @@ const SHOW_HITBOXES = false; // dev hitboxes off per request
 let player, npc;
 let playerNpcCollider = null; // to toggle fighter↔fighter collision during somersault
 let ground;
+let groundSupports = [];
 let platforms = [];
 let healthBars = {};
 let gameState = 'playing';
@@ -295,17 +296,46 @@ function updateParallax() {
 }
 
 function createGround(scene) {
+    // Clean up old supports if any
+    groundSupports.forEach(s => s.destroy());
+    groundSupports = [];
+
     // Make the ground a visible wooden bridge using the same texture as ledges
     makeWoodPlatformTexture(scene);
-    const BRIDGE_HEIGHT = 36;
-    const BRIDGE_WIDTH = Math.floor(config.width * 0.92);
-    // Position so the top is slightly lower than before (more room above)
-    const topY = 390; // previous ~378; lowered a bit
+    const BRIDGE_HEIGHT = 22; // thinner bridge
+    const BRIDGE_WIDTH = config.width; // full width
+    // Move slightly down for more space above
+    const topY = 404; // was ~390
     const y = topY + BRIDGE_HEIGHT / 2;
     ground = scene.add.tileSprite(config.width / 2, y, BRIDGE_WIDTH, BRIDGE_HEIGHT, 'wood-plat');
     ground.setDepth(5);
     scene.physics.add.existing(ground, true);
     ground.body.setSize(BRIDGE_WIDTH, BRIDGE_HEIGHT);
+
+    // Add angled support legs (visual only)
+    const woodDark = 0x5c3a1a;
+    const thickness = 10;
+    const startYL = y + BRIDGE_HEIGHT / 2; // bottom of bridge
+    const leftX = (config.width - BRIDGE_WIDTH) / 2; // left edge
+    const rightX = leftX + BRIDGE_WIDTH; // right edge
+    const legInset = 40; // inset from very edge for nicer look
+    const legs = [
+        { sx: leftX + legInset,  sy: startYL, ex: leftX + legInset - 90, ey: config.height },
+        { sx: rightX - legInset, sy: startYL, ex: rightX - legInset + 90, ey: config.height }
+    ];
+    legs.forEach(({ sx, sy, ex, ey }) => {
+        const dx = ex - sx;
+        const dy = ey - sy;
+        const len = Math.sqrt(dx*dx + dy*dy);
+        const ang = Phaser.Math.RadToDeg(Math.atan2(dy, dx));
+        const img = scene.add.image(sx, sy, 'particle')
+            .setOrigin(0, 0.5)
+            .setDepth(4)
+            .setTint(woodDark);
+        img.setDisplaySize(len, thickness);
+        img.angle = ang;
+        groundSupports.push(img);
+    });
 }
 
 // Helper: snap a fighter sprite onto the invisible floor top
