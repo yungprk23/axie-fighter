@@ -36,6 +36,7 @@ const game = new Phaser.Game(config);
 const SHOW_HITBOXES = false; // dev hitboxes off per request
 
 let player, npc;
+let playerNpcCollider = null; // to toggle fighter↔fighter collision during somersault
 let ground;
 let platforms = [];
 let healthBars = {};
@@ -352,7 +353,7 @@ function createFighters(scene) {
     scene.physics.add.collider(npc.sprite, ground);
 
     // Prevent walking through each other: add sprite↔sprite collider
-    scene.physics.add.collider(player.sprite, npc.sprite, (p, n) => {
+    playerNpcCollider = scene.physics.add.collider(player.sprite, npc.sprite, (p, n) => {
         // Light bump when at least one is airborne
         const pAir = !(p.body.blocked.down || p.body.touching.down);
         const nAir = !(n.body.blocked.down || n.body.touching.down);
@@ -729,6 +730,12 @@ class Fighter {
         this.maxJumps = 2; // double jump
         this.wasGrounded = false;
 
+        // Somersault/dodge state (player only)
+        this.isSomersault = false;
+        this.somersaultCooldown = 0;
+        this.lastTapLeft = -1;
+        this.lastTapRight = -1;
+
         /* build sprite & hitbox */
         this.createSprite(x, y);
         this.createAttackHitbox();
@@ -907,9 +914,13 @@ class Fighter {
     }
     
     handleMovement(controls) {
-        if (this.isAttacking) {
+        if (this.isAttacking || this.isSomersault) {
             this.sprite.setVelocityX(0);
             return;
+        }
+        // Double‑tap detection to trigger somersault (ground only)
+        if (this.type === 'player' && this.isGrounded()) {
+            this.checkDoubleTap(controls);
         }
         
         if (controls.left.isDown) {
@@ -942,6 +953,50 @@ class Fighter {
         const grounded = this.isGrounded();
         if (grounded && !this.wasGrounded) this.jumpCount = 0;
         this.wasGrounded = grounded;
+    }
+
+    checkDoubleTap(controls) {
+        const now = this.scene.time.now;
+        const threshold = 260; // ms window for double tap
+        if (Phaser.Input.Keyboard.JustDown(controls.right)) {
+            if (this.lastTapRight > 0 && (now - this.lastTapRight) < threshold && this.somersaultCooldown <= 0) {
+                this.startSomersault(1);
+            }
+            this.lastTapRight = now;
+        }
+        if (Phaser.Input.Keyboard.JustDown(controls.left)) {
+            if (this.lastTapLeft > 0 && (now - this.lastTapLeft) < threshold && this.somersaultCooldown <= 0) {
+                this.startSomersault(-1);
+            }
+            this.lastTapLeft = now;
+        }
+    }
+
+    startSomersault(dir) {
+        if (this.isSomersault || !this.isGrounded()) return;
+        this.isSomersault = true;
+        this.somersaultCooldown = 500; // brief cooldown before next roll
+        // Ignore fighter↔fighter collision during roll
+        if (playerNpcCollider) playerNpcCollider.active = false;
+        // Brief invulnerability to help evade
+        this.isInvulnerable = true;
+        this.invulnerableTime = 250;
+        // Launch forward with speed while flipping
+        this.sprite.setVelocityY(0);
+        this.sprite.setVelocityX(900 * dir);
+        const startAngle = this.sprite.angle;
+        this.scene.tweens.add({
+            targets: this.sprite,
+            angle: startAngle + (-360),
+            duration: 260,
+            ease: 'Cubic.easeOut',
+            onComplete: () => {
+                this.sprite.angle = 0;
+                this.isSomersault = false;
+                // Re‑enable fighter collision shortly after
+                this.scene.time.delayedCall(40, () => { if (playerNpcCollider) playerNpcCollider.active = true; });
+            }
+        });
     }
 
     onSecondJump() {
@@ -1215,6 +1270,9 @@ class Fighter {
         if (this.attackCooldown > 0) {
             this.attackCooldown -= this.scene.game.loop.delta;
         }
+        if (this.somersaultCooldown > 0) {
+            this.somersaultCooldown -= this.scene.game.loop.delta;
+        }
         
         if (this.isInvulnerable) {
             this.invulnerableTime -= this.scene.game.loop.delta;
@@ -1262,6 +1320,8 @@ class Fighter {
         this.invulnerableTime = 0;
         this.isDucking = false;
         this.wasGrounded = true;
+        this.isSomersault = false;
+        this.somersaultCooldown = 0;
         
         this.duck(false);
         
