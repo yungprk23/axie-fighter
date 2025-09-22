@@ -294,8 +294,8 @@ function updateParallax() {
 }
 
 function createGround(scene) {
-    const groundHeight = 160; // raised invisible floor
-    const groundY = config.height - groundHeight/2 - 10; // Move up by 10px
+    const groundHeight = 160; // invisible floor
+    const groundY = config.height - groundHeight/2 - 2; // slightly lower than before
     // Invisible ground collider (no visible graphics)
     ground = scene.add.rectangle(config.width/2, groundY, config.width, groundHeight, 0x74c69d);
     scene.physics.add.existing(ground, true);
@@ -319,9 +319,9 @@ function createPlatforms(scene) {
     
     // Platform specifications: position and width
     const specs = [
-        { x: config.width * 0.25, y: config.height * 0.46, width: 240 }, // left platform lower
-        { x: config.width * 0.50, y: config.height * 0.30, width: 280 }, // middle unchanged
-        { x: config.width * 0.75, y: config.height * 0.46, width: 240 }  // right platform lower
+        { x: config.width * 0.25, y: config.height * 0.52, width: 210 }, // left a bit lower, narrower
+        { x: config.width * 0.50, y: config.height * 0.30, width: 260 }, // middle unchanged height, slightly narrower
+        { x: config.width * 0.75, y: config.height * 0.52, width: 210 }  // right a bit lower, narrower
     ];
     
     // Create each platform
@@ -721,7 +721,7 @@ class Fighter {
         // Use different body sizes based on texture type
         if (keys.includes(textureKey)) {
             /* scale down large sprite and size body accordingly */
-            const SCALE = 0.175;   /* half the previous 0.35 */
+            const SCALE = 0.14;   /* smaller to make map feel bigger */
             this.sprite.setScale(SCALE);
             this.sprite.setBodySize(
                 this.sprite.width * SCALE * 0.6,
@@ -889,14 +889,18 @@ class Fighter {
     }
     
     duck(isDucking) {
+        const body = this.sprite.body;
+        const bottom = body.bottom;
         if (isDucking && this.isGrounded()) {
             if (!this.isDucking) {
-                this.sprite.body.setSize(this.sprite.body.width, this.duckHeight);
+                body.setSize(body.width, this.duckHeight);
                 this.isDucking = true;
+                this.sprite.setY(bottom - body.height / 2);
             }
         } else if (this.isDucking) {
-            this.sprite.body.setSize(this.sprite.body.width, this.normalHeight);
+            body.setSize(body.width, this.normalHeight);
             this.isDucking = false;
+            this.sprite.setY(bottom - body.height / 2);
         }
     }
     
@@ -1015,16 +1019,16 @@ class Fighter {
         if (this.type === 'player') {
             // Two gauntlets
             this.weaponFront = s.add.image(0, 0, 'particle').setTint(0xffa500).setDepth(26);
-            this.weaponFront.setDisplaySize(36, 12).setOrigin(0.5);
+            this.weaponFront.setDisplaySize(28, 10).setOrigin(0.5);
             this.weaponBack = s.add.image(0, 0, 'particle').setTint(0xffa500).setDepth(25);
-            this.weaponBack.setDisplaySize(28, 10).setOrigin(0.5).setAlpha(0.9);
+            this.weaponBack.setDisplaySize(22, 8).setOrigin(0.5).setAlpha(0.9);
         } else {
             // Sword (blade)
             this.weaponFront = s.add.image(0, 0, 'particle').setTint(0xcde7ff).setDepth(26);
-            this.weaponFront.setDisplaySize(100, 8).setOrigin(0, 0.5);
+            this.weaponFront.setDisplaySize(84, 7).setOrigin(0, 0.5);
             // Simple hilt/guard
             this.weaponBack = s.add.image(0, 0, 'particle').setTint(0x555555).setDepth(26);
-            this.weaponBack.setDisplaySize(14, 12).setOrigin(0.5);
+            this.weaponBack.setDisplaySize(12, 10).setOrigin(0.5);
         }
         this.updateWeapon();
     }
@@ -1033,19 +1037,19 @@ class Fighter {
         if (!this.weaponFront) return;
         const dir = this.facingLeft ? -1 : 1;
         if (this.type === 'player') {
-            const x1 = this.sprite.x + dir * 30;
-            const y1 = this.sprite.y - 6;
-            const x2 = this.sprite.x + dir * 14;
-            const y2 = this.sprite.y + 10;
+            const x1 = this.sprite.x + dir * 24;
+            const y1 = this.sprite.y - 5;
+            const x2 = this.sprite.x + dir * 12;
+            const y2 = this.sprite.y + 8;
             this.weaponFront.setPosition(x1, y1);
             this.weaponBack.setPosition(x2, y2);
             this.weaponFront.angle = 8 * dir;
             this.weaponBack.angle = 2 * dir;
         } else {
-            const x = this.sprite.x + dir * 40;
-            const y = this.sprite.y - 10;
+            const x = this.sprite.x + dir * 34;
+            const y = this.sprite.y - 9;
             this.weaponFront.setPosition(x, y);
-            this.weaponBack.setPosition(this.sprite.x + dir * 32, this.sprite.y - 10);
+            this.weaponBack.setPosition(this.sprite.x + dir * 28, this.sprite.y - 9);
             this.weaponFront.angle = 10 * dir;
             this.weaponBack.angle = 90 * dir;
         }
@@ -1077,18 +1081,18 @@ class Fighter {
         // Colors and sizes
         const color = isPlayer ? 0xffa500 : 0x9cc9ff;
         const lenMap = {
-            punch: isPlayer ? 80 : 120,
-            duckPunch: isPlayer ? 70 : 110,
-            kick: isPlayer ? 90 : 140,
-            jumpKick: isPlayer ? 100 : 150
+            punch: isPlayer ? 68 : 105,
+            duckPunch: isPlayer ? 60 : 95,
+            kick: isPlayer ? 76 : 120,
+            jumpKick: isPlayer ? 85 : 130
         };
-        const thickness = isPlayer ? 16 : 12;
+        const thickness = isPlayer ? 12 : 10;
         const len = lenMap[kind] || 100;
         const angleStart = -40 * dir;
         const angleDelta = 90 * dir;
         const dur = 160;
-        const ox = this.sprite.x + dir * 24;
-        const oy = this.sprite.y - (kind === 'duckPunch' ? -10 : 6);
+        const ox = this.sprite.x + dir * 22;
+        const oy = this.sprite.y - (kind === 'duckPunch' ? -8 : 5);
 
         const img = scene.add.image(ox, oy, 'particle')
             .setOrigin(0, 0.5)
