@@ -340,7 +340,7 @@ function createPlatforms(scene) {
 
 function createFighters(scene) {
     // temporary y, will adjust after bodies ready
-    player = new HybridFighter(scene, 300, 0, 'player', 0xffa500);
+    player = new Fighter(scene, 300, 0, 'player', 0xffa500);
     npc   = new Fighter(scene, 660, 0, 'npc',   0x52b788);
     
     scene.physics.add.collider(player.sprite, ground);
@@ -847,12 +847,13 @@ class Fighter {
         const isContainer = node instanceof Phaser.GameObjects.Container;
         const prop = isContainer ? 'rotation' : 'angle';
         const current = isContainer ? node.rotation : node.angle;
-        const target = isContainer ? current + Math.PI * 2 : current + 360;
+        // Clockwise and slower
+        const target = isContainer ? current - Math.PI * 2 : current - 360;
         this.scene.tweens.killTweensOf(node);
         this.scene.tweens.add({
             targets: node,
             [prop]: target,
-            duration: 280,
+            duration: 500,
             ease: 'Cubic.easeOut'
         });
     }
