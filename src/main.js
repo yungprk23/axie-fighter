@@ -628,6 +628,7 @@ class Fighter {
         this.facingLeft = type === 'npc';
         this.jumpCount = 0;
         this.maxJumps = 2; // double jump
+        this.wasGrounded = false;
 
         /* build sprite & hitbox */
         this.createSprite(x, y);
@@ -832,8 +833,10 @@ class Fighter {
         
         this.duck(controls.down.isDown);
 
-        // Reset jump counter on landing
-        if (this.isGrounded()) this.jumpCount = 0;
+        // Reset jump counter only on air->ground transition
+        const grounded = this.isGrounded();
+        if (grounded && !this.wasGrounded) this.jumpCount = 0;
+        this.wasGrounded = grounded;
     }
     
     duck(isDucking) {
@@ -1027,6 +1030,7 @@ class Fighter {
         this.isInvulnerable = false;
         this.invulnerableTime = 0;
         this.isDucking = false;
+        this.wasGrounded = true;
         
         this.duck(false);
         
@@ -1120,21 +1124,21 @@ class RiggedFighter extends Fighter {
         const timeline = this.scene.tweens.createTimeline();
 
         if (type === 'punch' || type === 'duckPunch') {
-            // Wind-up
+            // Wind-up (parallel)
             timeline.add({ targets: [uArm], angle: -35 * dir, duration: 90, ease: 'Quad.easeOut' });
-            timeline.add({ targets: [lArm], angle: -15 * dir, duration: 90, at: 0 });
-            // Release
+            timeline.add({ targets: [lArm], angle: -15 * dir, duration: 90, offset: 0 });
+            // Release (parallel)
             timeline.add({ targets: [uArm], angle: 50 * dir, duration: 110, ease: 'Quad.easeIn' });
-            timeline.add({ targets: [lArm], angle: 80 * dir, duration: 110, at: '>=-110' });
+            timeline.add({ targets: [lArm], angle: 80 * dir, duration: 110, offset: 0 });
             // Recovery
             timeline.add({ targets: [uArm, lArm], angle: 0, duration: 120, ease: 'Quad.easeOut' });
         } else if (type === 'kick' || type === 'jumpKick') {
-            // Wind-up
+            // Wind-up (parallel)
             timeline.add({ targets: [uLeg], angle: 20 * dir, duration: 120, ease: 'Quad.easeOut' });
-            timeline.add({ targets: [lLeg], angle: 10 * dir, duration: 120, at: 0 });
-            // Release
+            timeline.add({ targets: [lLeg], angle: 10 * dir, duration: 120, offset: 0 });
+            // Release (parallel)
             timeline.add({ targets: [uLeg], angle: -45 * dir, duration: 140, ease: 'Quad.easeIn' });
-            timeline.add({ targets: [lLeg], angle: -80 * dir, duration: 140, at: '>=-140' });
+            timeline.add({ targets: [lLeg], angle: -80 * dir, duration: 140, offset: 0 });
             // Recovery
             timeline.add({ targets: [uLeg, lLeg], angle: 0, duration: 140, ease: 'Quad.easeOut' });
         }
