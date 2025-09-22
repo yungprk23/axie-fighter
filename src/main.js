@@ -340,7 +340,7 @@ function createPlatforms(scene) {
 
 function createFighters(scene) {
     // temporary y, will adjust after bodies ready
-    player = new RiggedFighter(scene, 300, 0, 'player', 0xffa500);
+    player = new HybridFighter(scene, 300, 0, 'player', 0xffa500);
     npc   = new Fighter(scene, 660, 0, 'npc',   0x52b788);
     
     scene.physics.add.collider(player.sprite, ground);
@@ -1152,5 +1152,123 @@ class RiggedFighter extends Fighter {
         [this.uArmL, this.lArmL, this.uArmR, this.lArmR, this.uLegL, this.lLegL, this.uLegR, this.lLegR]
             .forEach(n => { if (n) n.angle = 0; });
         this.syncRig();
+    }
+}
+
+// Hybrid: keep original PNG sprite visually, overlay articulated limbs on top
+class HybridFighter extends Fighter {
+    createSprite(x, y) {
+        // Invisible physics body that drives movement
+        this.sprite = this.scene.physics.add.image(x, y, 'particle').setAlpha(0.0001);
+        this.sprite.setBounce(0.1);
+        this.sprite.setCollideWorldBounds(true);
+        this.sprite.body.setSize(44, 60);
+
+        this.baseScaleX = 1;
+        this.baseScaleY = 1;
+        this.normalHeight = this.sprite.body.height;
+        this.duckHeight = this.normalHeight * 0.6;
+
+        // Build container that follows the body
+        this.container = this.scene.add.container(x, y).setDepth(7);
+
+        // Choose the best available player texture
+        const keys = ['playerSprite_ck','playerSpriteAlt_ck','playerSprite','playerSpriteAlt'];
+        let textureKey = null;
+        for (const k of keys) { if (this.scene.textures.exists(k)) { textureKey = k; break; } }
+
+        if (textureKey) {
+            const SCALE = 0.175;
+            this.mainSprite = this.scene.add.image(0, 0, textureKey).setScale(SCALE).setDepth(6);
+            this.container.add(this.mainSprite);
+        } else {
+            // fallback simple body
+            const body = this.scene.add.circle(0, 0, 30, this.color).setDepth(6);
+            this.container.add(body);
+        }
+
+        // Add limb overlay
+        this.buildRig();
+    }
+
+    buildRig() {
+        const scene = this.scene;
+        const main = this.color;
+        const dark = Phaser.Display.Color.GetColor(
+            Math.max(0, (main >> 16) - 30),
+            Math.max(0, ((main >> 8) & 0xff) - 30),
+            Math.max(0, (main & 0xff) - 30)
+        );
+
+        const makeSegment = (length, thick, tint) => {
+            const seg = scene.add.image(0, 0, 'particle').setTint(tint).setDepth(8);
+            seg.setDisplaySize(length, thick).setOrigin(0, 0.5);
+            const c = scene.add.container(0, 0, [seg]);
+            c.setDepth(8);
+            return c;
+        };
+
+        // Torso/head overlays (subtle) so limbs feel connected
+        this.torso = scene.add.image(0, 5, 'particle').setTint(main).setDepth(7).setAlpha(0.25);
+        this.torso.setDisplaySize(60, 48);
+        this.head  = scene.add.circle(0, -44, 22, main).setStrokeStyle(2, dark).setAlpha(0.25).setDepth(7);
+
+        // Arms
+        this.uArmL = makeSegment(30, 10, dark); this.uArmL.x = -28; this.uArmL.y = -10;
+        this.lArmL = makeSegment(26, 8, dark);  this.lArmL.x = 30;  this.lArmL.y = 0; this.uArmL.add(this.lArmL);
+        this.uArmR = makeSegment(30, 10, dark); this.uArmR.x =  28; this.uArmR.y = -10;
+        this.lArmR = makeSegment(26, 8, dark);  this.lArmR.x = 30;  this.lArmR.y = 0; this.uArmR.add(this.lArmR);
+
+        // Legs
+        this.uLegL = makeSegment(30, 12, dark); this.uLegL.x = -15; this.uLegL.y = 26;
+        this.lLegL = makeSegment(26, 10, dark); this.lLegL.x = 30;  this.lLegL.y = 0; this.uLegL.add(this.lLegL);
+        this.uLegR = makeSegment(30, 12, dark); this.uLegR.x =  15; this.uLegR.y = 26;
+        this.lLegR = makeSegment(26, 10, dark); this.lLegR.x = 30;  this.lLegR.y = 0; this.uLegR.add(this.lLegR);
+
+        this.container.add([this.torso, this.head, this.uArmL, this.uArmR, this.uLegL, this.uLegR]);
+    }
+
+    sync() {
+        this.container.x = this.sprite.x;
+        this.container.y = this.sprite.y;
+        this.container.scaleX = this.facingLeft ? -1 : 1;
+    }
+
+    update(controls) {
+        super.update(controls);
+        this.sync();
+    }
+
+    animateAttack(type) {
+        // Limb animation same as RiggedFighter
+        const dir = this.facingLeft ? -1 : 1;
+        const isFrontLeft = this.facingLeft;
+        const uArm = isFrontLeft ? this.uArmL : this.uArmR;
+        const lArm = isFrontLeft ? this.lArmL : this.lArmR;
+        const uLeg = isFrontLeft ? this.uLegL : this.uLegR;
+        const lLeg = isFrontLeft ? this.lLegL : this.lLegR;
+
+        const timeline = this.scene.tweens.createTimeline();
+        if (type === 'punch' || type === 'duckPunch') {
+            timeline.add({ targets: [uArm], angle: -35 * dir, duration: 90, ease: 'Quad.easeOut' });
+            timeline.add({ targets: [lArm], angle: -15 * dir, duration: 90, offset: 0 });
+            timeline.add({ targets: [uArm], angle: 50 * dir, duration: 110, ease: 'Quad.easeIn' });
+            timeline.add({ targets: [lArm], angle: 80 * dir, duration: 110, offset: 0 });
+            timeline.add({ targets: [uArm, lArm], angle: 0, duration: 120, ease: 'Quad.easeOut' });
+        } else if (type === 'kick' || type === 'jumpKick') {
+            timeline.add({ targets: [uLeg], angle: 20 * dir, duration: 120, ease: 'Quad.easeOut' });
+            timeline.add({ targets: [lLeg], angle: 10 * dir, duration: 120, offset: 0 });
+            timeline.add({ targets: [uLeg], angle: -45 * dir, duration: 140, ease: 'Quad.easeIn' });
+            timeline.add({ targets: [lLeg], angle: -80 * dir, duration: 140, offset: 0 });
+            timeline.add({ targets: [uLeg, lLeg], angle: 0, duration: 140, ease: 'Quad.easeOut' });
+        }
+        timeline.play();
+    }
+
+    reset(x, y) {
+        super.reset(x, y);
+        [this.uArmL, this.lArmL, this.uArmR, this.lArmR, this.uLegL, this.lLegL, this.uLegR, this.lLegR]
+            .forEach(n => { if (n) n.angle = 0; });
+        this.sync();
     }
 }
