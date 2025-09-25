@@ -40,6 +40,7 @@ let playerNpcCollider = null; // to toggle fighter↔fighter collision during so
 let ground;
 let groundSupports = [];
 let platforms = [];
+let playerPlatformColliders = [];
 let healthBars = {};
 let gameState = 'playing';
 let helpOverlay;
@@ -376,6 +377,17 @@ function createPlatforms(scene) {
     });
 }
 
+function isStandingOn(sprite, platform) {
+    if (!platform || !platform.body || !sprite || !sprite.body) return false;
+    const top = platform.body.top;
+    const left = platform.body.left;
+    const right = platform.body.right;
+    const bottom = sprite.body.bottom;
+    const nearTop = Math.abs(bottom - top) <= 6;
+    const withinX = sprite.x >= left - sprite.body.width * 0.3 && sprite.x <= right + sprite.body.width * 0.3;
+    return nearTop && withinX && sprite.body.velocity.y >= -10;
+}
+
 function createFighters(scene) {
     // temporary y, will adjust after bodies ready
     player = new Fighter(scene, 300, 0, 'player', 0xffa500);
@@ -399,8 +411,10 @@ function createFighters(scene) {
     });
 
     // platform colliders
+    playerPlatformColliders = [];
     platforms.forEach(p => {
-        scene.physics.add.collider(player.sprite, p);
+        const c1 = scene.physics.add.collider(player.sprite, p);
+        playerPlatformColliders.push(c1);
         scene.physics.add.collider(npc.sprite,   p);
     });
 
@@ -816,6 +830,7 @@ class Fighter {
         // Somersault/dodge state (player only)
         this.isSomersault = false;
         this.somersaultCooldown = 0;
+        this.lastTapDown = -1;
         this.lastTapLeft = -1;
         this.lastTapRight = -1;
 
@@ -1020,6 +1035,10 @@ class Fighter {
         if (this.type === 'player' && this.isGrounded()) {
             this.checkDoubleTap(controls);
         }
+        // Double‑tap S to drop through mid-air ledges (not the bottom floor)
+        if (this.type === 'player') {
+            this.checkDropThrough(controls);
+        }
         
         if (controls.left.isDown) {
             this.sprite.setVelocityX(-this.speed);
@@ -1051,6 +1070,34 @@ class Fighter {
         const grounded = this.isGrounded();
         if (grounded && !this.wasGrounded) this.jumpCount = 0;
         this.wasGrounded = grounded;
+    }
+
+    checkDropThrough(controls) {
+        const now = this.scene.time.now;
+        const threshold = 260;
+        if (Phaser.Input.Keyboard.JustDown(controls.down)) {
+            if (this.lastTapDown > 0 && (now - this.lastTapDown) < threshold) {
+                const idx = this.getStandingPlatformIndex();
+                if (idx >= 0) this.dropThroughPlatform(idx);
+            }
+            this.lastTapDown = now;
+        }
+    }
+
+    getStandingPlatformIndex() {
+        for (let i = 0; i < platforms.length; i++) {
+            if (isStandingOn(this.sprite, platforms[i])) return i;
+        }
+        return -1;
+    }
+
+    dropThroughPlatform(index) {
+        const col = playerPlatformColliders[index];
+        if (!col) return;
+        col.active = false;
+        // Nudge downward to ensure separation from platform
+        this.sprite.setVelocityY(260);
+        this.scene.time.delayedCall(360, () => { col.active = true; });
     }
 
     checkDoubleTap(controls) {
@@ -1357,12 +1404,26 @@ class Fighter {
             }
         }
 
-        // Safety: clamp runaway horizontal velocity when not somersaulting
-        const maxVX = 600;
-        if (!this.isSomersault) {
-            const vx = this.sprite.body.velocity.x;
-            if (vx > maxVX) this.sprite.setVelocityX(maxVX);
-            else if (vx < -maxVX) this.sprite.setVelocityX(-maxVX);
+        // Safety: clamp runaway velocities and recover from non-finite values
+        const body = this.sprite.body;
+        let vx = body.velocity.x;
+        let vy = body.velocity.y;
+        if (!Number.isFinite(vx)) vx = 0;
+        if (!Number.isFinite(vy)) vy = 0;
+        const MAX_WALK_VX = 600;
+        const MAX_ROLL_VX = 1200; // allow faster while rolling
+        const MAX_VY = 1400;
+        const limVX = this.isSomersault ? MAX_ROLL_VX : MAX_WALK_VX;
+        if (vx > limVX) body.velocity.x = limVX; else if (vx < -limVX) body.velocity.x = -limVX;
+        if (vy > MAX_VY) body.velocity.y = MAX_VY; else if (vy < -MAX_VY) body.velocity.y = -MAX_VY;
+
+        // Floor safety: never allow dropping below bottom floor
+        if (ground && ground.body) {
+            const floorTop = ground.body.top;
+            if (body.bottom > floorTop + 6) {
+                this.sprite.y = floorTop - body.height / 2;
+                this.sprite.setVelocityY(0);
+            }
         }
     }
     
