@@ -949,6 +949,11 @@ class Fighter {
         this.sprite = this.scene.physics.add.sprite(x, y, textureKey);
         this.sprite.setBounce(0.1);
         this.sprite.setCollideWorldBounds(true);
+        // Cap instantaneous speeds to prevent one-frame "flash" jumps
+        if (this.sprite.body && this.sprite.body.setMaxVelocity) {
+            this.baseMaxVX = 700;
+            this.sprite.body.setMaxVelocity(this.baseMaxVX, 1400);
+        }
 
         // Use different body sizes based on texture type
         if (keys.includes(textureKey)) {
@@ -1172,16 +1177,18 @@ class Fighter {
         this.invulnerableTime = 250;
         // Launch forward with speed while flipping
         this.sprite.setVelocityY(0);
-        this.sprite.setVelocityX(1080 * dir); // ~+20% farther dash roll
+        if (this.sprite.body && this.sprite.body.setMaxVelocity) this.sprite.body.setMaxVelocity(1500, 1400);
+        this.sprite.setVelocityX(1400 * dir); // +30% farther than previous
         const startAngle = this.sprite.angle;
         this.scene.tweens.add({
             targets: this.sprite,
             angle: startAngle + (-360),
-            duration: 320,
+            duration: 360,
             ease: 'Cubic.easeOut',
             onComplete: () => {
                 this.sprite.angle = 0;
                 this.isSomersault = false;
+                if (this.sprite.body && this.sprite.body.setMaxVelocity) this.sprite.body.setMaxVelocity(this.baseMaxVX || 700, 1400);
                 // Re‑enable fighter collision shortly after
                 this.scene.time.delayedCall(40, () => { if (playerNpcCollider) playerNpcCollider.active = true; });
             }
@@ -1254,10 +1261,25 @@ class Fighter {
     
     animateAttack(type) {
         const dir = this.facingLeft ? -1 : 1;
+        // Player (spear): no spin; small forward lunge only
+        if (this.type === 'player') {
+            if (type === 'attack' || type === 'duckAttack') {
+                this.scene.tweens.add({
+                    targets: this.sprite,
+                    scaleX: this.baseScaleX * 1.06,
+                    scaleY: this.baseScaleY * 0.96,
+                    x: this.sprite.x + (type === 'attack' ? 10 : 6) * dir,
+                    duration: 110,
+                    yoyo: true,
+                    onComplete: () => this.sprite.setScale(this.baseScaleX, this.baseScaleY)
+                });
+                return;
+            }
+        }
         
         switch(type) {
             case 'attack':
-                // Exaggerated rotate and swerve streaks (black & white)
+                // Legacy (used by NPC only now)
                 createPunchSwerve(this.sprite.x, this.sprite.y, dir, this.scene);
                 this.scene.tweens.add({
                     targets: this.sprite,
@@ -1314,12 +1336,12 @@ class Fighter {
     createWeapon() {
         const s = this.scene;
         if (this.type === 'player') {
-            // Spear: shaft + arrow-like head
-            this.weaponFront = s.add.image(0, 0, 'particle').setTint(0x8b5a2b).setDepth(26); // shaft
-            this.weaponFront.setDisplaySize(120, 6).setOrigin(0, 0.5);
-            this.weaponBack  = s.add.image(0, 0, 'spear-head').setDepth(27); // head
-            this.weaponBack.setOrigin(0, 0.5).setScale(1);
-        } else {
+            // Player spear: tip-only hitbox; longer reach, slower
+            this.attackTypes = {
+                attack:     { damage: 12, duration: 380, cooldown: 560, type: 'high', offsetX: 130, offsetY: -10, width: 22, height: 18 },
+                duckAttack: { damage: 10, duration: 360, cooldown: 560, type: 'low',  offsetX: 118, offsetY:  18, width: 20, height: 18 },
+                ranged:     { damage: 12, duration: 450, cooldown: 900, type: 'projectile', offsetX: 60, offsetY:  -6, width: 0,  height: 0 }
+            };
             // Sword: blade + guard/handle
             this.weaponFront = s.add.image(0, 0, 'sword-blade').setDepth(26).setOrigin(0, 0.5);
             this.weaponBack = s.add.container(0, 0).setDepth(26);
@@ -1337,8 +1359,13 @@ class Fighter {
             // Position spear: base near hands; head at tip
             const sx = this.sprite.x + dir * 26;
             const sy = this.sprite.y - 6;
-            this.weaponFront.setPosition(sx, sy); // shaft base near hands
-            this.weaponBack.setPosition(sx + dir * 120, sy); // spearhead at tip
+            if (!(this.isAttacking && (this.currentAttackName === 'attack' || this.currentAttackName === 'duckAttack'))) {
+                this.weaponFront.setPosition(sx, sy); // shaft base near hands
+                this.weaponBack.setPosition(sx + dir * 120, sy); // spearhead at tip
+            }
+            // Face spear forward relative to direction
+            this.weaponFront.setScale(dir, 1);
+            this.weaponBack.setScale(dir, 1);
             if (!this.isAttacking) {
                 this.weaponFront.angle = 6 * dir;
                 this.weaponBack.angle = 6 * dir;
@@ -1364,11 +1391,12 @@ class Fighter {
         const cfg = { duration: 120, yoyo: true, ease: 'Quad.easeOut' };
         if (this.type === 'player') {
             if (type === 'attack' || type === 'duckAttack') {
-                // Spear thrust: quick forward stab then retract
+                // Spear thrust: quick forward stab then retract; move body slightly forward
                 const thrust = { targets: [this.weaponFront, this.weaponBack], x: 
-                    (o, key, t, idx) => (idx===0? this.weaponFront.x : this.weaponBack.x) + 24 * dir,
+                    (o, key, t, idx) => (idx===0? this.weaponFront.x : this.weaponBack.x) + 28 * dir,
                     duration: 120, ease: 'Quad.easeOut', yoyo: true };
                 s.tweens.add(thrust);
+                s.tweens.add({ targets: this.sprite, x: this.sprite.x + 12 * dir, duration: 120, yoyo: true, ease: 'Quad.easeOut' });
                 this.showSpearTrail(dir);
             } else if (type === 'ranged') {
                 s.tweens.add({ targets: this.weaponFront, angle: -10 * dir, ...cfg });
@@ -1392,9 +1420,9 @@ class Fighter {
     showSpearTrail(dir) {
         const scene = this.scene;
         const color = 0xd4b48c;
-        const len = 90;
+        const len = 100;
         const thickness = 12;
-        const ox = this.sprite.x + dir * 46;
+        const ox = this.sprite.x + dir * 154; // near spear tip
         const oy = this.sprite.y - 6;
         const img = scene.add.image(ox, oy, 'particle')
             .setOrigin(0, 0.5)
