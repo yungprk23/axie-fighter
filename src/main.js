@@ -75,6 +75,7 @@ function create() {
     createBackground(this);
     createGround(this);
     createPlatforms(this);
+    makeWeaponTextures(this);
     
     // Process character textures to remove backgrounds
     processCharacterTextures(this);
@@ -133,6 +134,49 @@ function makeWoodPlatformTexture(scene) {
     // Generate texture and clean up
     g.generateTexture('wood-plat', width, height);
     g.destroy();
+}
+
+function makeWeaponTextures(scene) {
+    // Spear head (triangle)
+    if (!scene.textures.exists('spear-head')) {
+        const g = scene.add.graphics();
+        g.fillStyle(0xffffff, 1);
+        g.lineStyle(2, 0x999999, 1);
+        const w = 22, h = 14;
+        g.fillTriangle(0, h/2, w, 0, w, h);
+        g.strokeTriangle(0, h/2, w, 0, w, h);
+        g.generateTexture('spear-head', w + 2, h + 2);
+        g.destroy();
+    }
+    // Sword blade (tapered)
+    if (!scene.textures.exists('sword-blade')) {
+        const g = scene.add.graphics();
+        g.fillStyle(0xe7f3ff, 1);
+        g.lineStyle(2, 0x9cb7c9, 1);
+        const pts = [
+            {x:0,y:0}, {x:92,y:0}, {x:108,y:6}, {x:92,y:12}, {x:0,y:12}
+        ];
+        g.fillPoints(pts, true);
+        g.strokePoints(pts, true);
+        g.generateTexture('sword-blade', 112, 14);
+        g.destroy();
+    }
+    // Sword guard
+    if (!scene.textures.exists('sword-guard')) {
+        const g = scene.add.graphics();
+        g.fillStyle(0x444444, 1);
+        g.fillRoundedRect(0, 0, 26, 8, 3);
+        g.generateTexture('sword-guard', 26, 8);
+        g.destroy();
+    }
+    // Sword handle
+    if (!scene.textures.exists('sword-handle')) {
+        const g = scene.add.graphics();
+        g.fillStyle(0x2b1a0f, 1);
+        g.fillRoundedRect(0, 0, 18, 6, 3);
+        g.generateTexture('sword-handle', 18, 6);
+        g.destroy();
+    }
 }
 
 function chromaKeyTexture(scene, srcKey, dstKey, threshold=40) {
@@ -593,7 +637,7 @@ function spawnRangedProjectile(owner, dir) {
 
     const body = scene.physics.add.image(startX, startY, 'particle').setVisible(false);
     body.body.allowGravity = false;
-    body.setCircle(6);
+    body.setCircle(10);
     body.setVelocityX(speed * dir);
     body.setDepth(26);
 
@@ -840,17 +884,17 @@ class Fighter {
 
         /* attacks */
         if (this.type === 'player') {
-            // Player spear: slightly longer range but slower than NPC sword
+            // Player spear: tip-only hitbox; longer reach, slower
             this.attackTypes = {
-                attack:     { damage: 12, duration: 360, cooldown: 520, type: 'high', offsetX: 64, offsetY: -10, width: 52, height: 20 },
-                duckAttack: { damage: 10, duration: 340, cooldown: 520, type: 'low',  offsetX: 62, offsetY:  20, width: 48, height: 20 },
+                attack:     { damage: 12, duration: 380, cooldown: 560, type: 'high', offsetX: 96, offsetY: -10, width: 26, height: 18 },
+                duckAttack: { damage: 10, duration: 360, cooldown: 560, type: 'low',  offsetX: 84, offsetY:  20, width: 24, height: 18 },
                 ranged:     { damage: 12, duration: 450, cooldown: 900, type: 'projectile', offsetX: 60, offsetY:  -6, width: 0,  height: 0 }
             };
         } else {
             // NPC sword (unchanged)
             this.attackTypes = {
-                attack:     { damage: 10, duration: 300, cooldown: 400, type: 'high', offsetX: 50, offsetY: -10, width: 40, height: 20 },
-                duckAttack: { damage:  8, duration: 300, cooldown: 400, type: 'low',  offsetX: 50, offsetY:  20, width: 40, height: 20 },
+                attack:     { damage: 10, duration: 300, cooldown: 420, type: 'high', offsetX: 56, offsetY: -10, width: 60, height: 24 },
+                duckAttack: { damage:  8, duration: 300, cooldown: 420, type: 'low',  offsetX: 56, offsetY:  18, width: 58, height: 24 },
                 ranged:     { damage: 12, duration: 450, cooldown: 900, type: 'projectile', offsetX: 60, offsetY:  -6, width: 0,  height: 0 }
             };
         }
@@ -1270,18 +1314,18 @@ class Fighter {
     createWeapon() {
         const s = this.scene;
         if (this.type === 'player') {
-            // Spear: shaft + spearhead
+            // Spear: shaft + arrow-like head
             this.weaponFront = s.add.image(0, 0, 'particle').setTint(0x8b5a2b).setDepth(26); // shaft
-            this.weaponFront.setDisplaySize(110, 6).setOrigin(0, 0.5);
-            this.weaponBack  = s.add.image(0, 0, 'particle').setTint(0xffffff).setDepth(27); // head
-            this.weaponBack.setDisplaySize(16, 12).setOrigin(0, 0.5);
+            this.weaponFront.setDisplaySize(120, 6).setOrigin(0, 0.5);
+            this.weaponBack  = s.add.image(0, 0, 'spear-head').setDepth(27); // head
+            this.weaponBack.setOrigin(0, 0.5).setScale(1);
         } else {
-            // Sword (blade)
-            this.weaponFront = s.add.image(0, 0, 'particle').setTint(0xcde7ff).setDepth(26);
-            this.weaponFront.setDisplaySize(84, 7).setOrigin(0, 0.5);
-            // Simple hilt/guard
-            this.weaponBack = s.add.image(0, 0, 'particle').setTint(0x555555).setDepth(26);
-            this.weaponBack.setDisplaySize(12, 10).setOrigin(0.5);
+            // Sword: blade + guard/handle
+            this.weaponFront = s.add.image(0, 0, 'sword-blade').setDepth(26).setOrigin(0, 0.5);
+            this.weaponBack = s.add.container(0, 0).setDepth(26);
+            const guard = s.add.image(0, 0, 'sword-guard').setOrigin(0.5);
+            const handle = s.add.image(-10, 0, 'sword-handle').setOrigin(1, 0.5);
+            this.weaponBack.add([guard, handle]);
         }
         this.updateWeapon();
     }
@@ -1294,16 +1338,20 @@ class Fighter {
             const sx = this.sprite.x + dir * 26;
             const sy = this.sprite.y - 6;
             this.weaponFront.setPosition(sx, sy); // shaft base near hands
-            this.weaponBack.setPosition(sx + dir * 110, sy); // spearhead at tip
-            this.weaponFront.angle = 6 * dir;
-            this.weaponBack.angle = 6 * dir;
+            this.weaponBack.setPosition(sx + dir * 120, sy); // spearhead at tip
+            if (!this.isAttacking) {
+                this.weaponFront.angle = 6 * dir;
+                this.weaponBack.angle = 6 * dir;
+            }
         } else {
             const x = this.sprite.x + dir * 34;
             const y = this.sprite.y - 9;
             this.weaponFront.setPosition(x, y);
             this.weaponBack.setPosition(this.sprite.x + dir * 28, this.sprite.y - 9);
-            this.weaponFront.angle = 10 * dir;
-            this.weaponBack.angle = 90 * dir;
+            if (!this.isAttacking) {
+                this.weaponFront.angle = 10 * dir;
+                this.weaponBack.angle = 0;
+            }
         }
     }
 
@@ -1316,34 +1364,38 @@ class Fighter {
         const cfg = { duration: 120, yoyo: true, ease: 'Quad.easeOut' };
         if (this.type === 'player') {
             if (type === 'attack' || type === 'duckAttack') {
-                s.tweens.add({ targets: this.weaponFront, angle: 60 * dir, x: this.weaponFront.x + 6 * dir, ...cfg });
+                // Spear thrust: quick forward stab then retract
+                const thrust = { targets: [this.weaponFront, this.weaponBack], x: 
+                    (o, key, t, idx) => (idx===0? this.weaponFront.x : this.weaponBack.x) + 24 * dir,
+                    duration: 120, ease: 'Quad.easeOut', yoyo: true };
+                s.tweens.add(thrust);
+                this.showSpearTrail(dir);
             } else if (type === 'ranged') {
-                s.tweens.add({ targets: this.weaponFront, angle: -20 * dir, ...cfg });
+                s.tweens.add({ targets: this.weaponFront, angle: -10 * dir, ...cfg });
             }
         } else {
-            // NPC sword sweep
-            const dur = type === 'attack' ? 140 : 180;
-            s.tweens.add({ targets: this.weaponFront, angle: 90 * dir, duration: dur, yoyo: true, ease: 'Quad.easeInOut' });
+            // NPC sword slash: arc, not 360
+            const start = -30 * dir, end = 70 * dir;
+            this.weaponFront.angle = start;
+            s.tweens.add({ targets: this.weaponFront, angle: end, duration: (type==='attack'?150:180), yoyo: true, ease: 'Quad.easeInOut' });
+            this.showSwordArcTrail(dir, type);
         }
     }
 
     showWeaponTrail(kind, dir) {
         const scene = this.scene;
         const isPlayer = this.type === 'player';
-        // Colors and sizes
-        const color = isPlayer ? 0xd4b48c : 0x9cc9ff; // spear trail tint for player
-        const lenMap = {
-            attack: isPlayer ? 80 : 105,
-            duckAttack: isPlayer ? 70 : 95
-        };
-        const thickness = isPlayer ? 12 : 10;
-        const len = lenMap[kind] || 100;
-        const angleStart = -40 * dir;
-        const angleDelta = 90 * dir;
-        const dur = 160;
-        const ox = this.sprite.x + dir * 22;
-        const oy = this.sprite.y - (kind === 'duckAttack' ? -8 : 5);
+        if (isPlayer) { this.showSpearTrail(dir); return; }
+        this.showSwordArcTrail(dir, kind);
+    }
 
+    showSpearTrail(dir) {
+        const scene = this.scene;
+        const color = 0xd4b48c;
+        const len = 90;
+        const thickness = 12;
+        const ox = this.sprite.x + dir * 46;
+        const oy = this.sprite.y - 6;
         const img = scene.add.image(ox, oy, 'particle')
             .setOrigin(0, 0.5)
             .setDepth(24)
@@ -1351,15 +1403,26 @@ class Fighter {
             .setTint(color)
             .setAlpha(0.9);
         img.setDisplaySize(len, thickness);
-        img.angle = angleStart;
-        scene.tweens.add({
-            targets: img,
-            angle: angleStart + angleDelta,
-            alpha: 0,
-            ease: 'Cubic.easeOut',
-            duration: dur,
-            onComplete: () => img.destroy()
-        });
+        img.angle = 0;
+        scene.tweens.add({ targets: img, alpha: 0, scaleX: 0.8, duration: 140, ease: 'Cubic.easeOut', onComplete: () => img.destroy() });
+    }
+
+    showSwordArcTrail(dir, kind) {
+        const scene = this.scene;
+        const color = 0x9cc9ff;
+        const len = kind === 'duckAttack' ? 90 : 110;
+        const thickness = 10;
+        const ox = this.sprite.x + dir * 28;
+        const oy = this.sprite.y - 10;
+        const img = scene.add.image(ox, oy, 'particle')
+            .setOrigin(0, 0.5)
+            .setDepth(24)
+            .setBlendMode(Phaser.BlendModes.ADD)
+            .setTint(color)
+            .setAlpha(0.9);
+        img.setDisplaySize(len, thickness);
+        img.angle = -30 * dir;
+        scene.tweens.add({ targets: img, angle: 70 * dir, alpha: 0, duration: 180, ease: 'Cubic.easeOut', onComplete: () => img.destroy() });
     }
     
     updateAttackHitbox() {
@@ -1425,6 +1488,11 @@ class Fighter {
                 this.sprite.setVelocityY(0);
             }
         }
+
+        // World horizontal bounds safety
+        const minX = 12, maxX = config.width - 12;
+        if (this.sprite.x < minX) { this.sprite.x = minX; body.velocity.x = 0; }
+        if (this.sprite.x > maxX) { this.sprite.x = maxX; body.velocity.x = 0; }
     }
     
     takeDamage(amount) {
@@ -1436,9 +1504,19 @@ class Fighter {
         this.invulnerableTime = 500;
         this.sprite.setTint(0xffaaaa);
         
-        const knockbackForce = 150;
+        // Cancel rolling and any tweens to avoid velocity stacking
+        this.isSomersault = false;
+        this.scene.tweens.killTweensOf(this.sprite);
+        if (this.weaponFront) this.scene.tweens.killTweensOf(this.weaponFront);
+        if (this.weaponBack) this.scene.tweens.killTweensOf(this.weaponBack);
+        if (playerNpcCollider) playerNpcCollider.active = true;
+
+        // Controlled knockback
+        const knockbackForce = 260;
         const knockbackDirection = this.facingLeft ? 1 : -1;
-        this.sprite.setVelocityX(knockbackForce * knockbackDirection);
+        const kbX = Phaser.Math.Clamp(knockbackForce * knockbackDirection, -420, 420);
+        const kbY = -120; // slight pop
+        this.sprite.setVelocity(kbX, Math.min(this.sprite.body.velocity.y, kbY));
         
         if (this.health <= 0) {
             this.sprite.setTint(0xff0000);
