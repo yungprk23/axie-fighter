@@ -240,10 +240,12 @@ function processCharacterTextures(scene) {
     if (scene.textures.exists('playerSprite')) {
         // standard player image – keep a moderate tolerance
         chromaKeyTexture(scene, 'playerSprite', 'playerSprite_ck', 18);
+        removeBottomShadowTexture(scene, 'playerSprite_ck', 'playerSprite_ck_ns');
     }
     if (scene.textures.exists('playerSpriteAlt')) {
         // alt player image appears to have a very even background – tighter tolerance
         chromaKeyTexture(scene, 'playerSpriteAlt', 'playerSpriteAlt_ck', 12);
+        removeBottomShadowTexture(scene, 'playerSpriteAlt_ck', 'playerSpriteAlt_ck_ns');
     }
 
     // Process NPC sprite if it exists
@@ -255,6 +257,39 @@ function processCharacterTextures(scene) {
         // alt npc image may need slightly looser tolerance
         chromaKeyTexture(scene, 'npcSpriteAlt', 'npcSpriteAlt_ck', 24);
     }
+}
+
+// Heuristic: strip soft oval shadow at the bottom of the sprite by zeroing
+// semi‑dark pixels in the lower band of the image.
+function removeBottomShadowTexture(scene, srcKey, dstKey) {
+    try {
+        const tex = scene.textures.get(srcKey);
+        if (!tex) return;
+        const img = tex.getSourceImage();
+        const w = img.width, h = img.height;
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const data = ctx.getImageData(0, 0, w, h);
+        const px = data.data;
+        for (let y = Math.floor(h * 0.62); y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                const i = (y * w + x) * 4;
+                const r = px[i], g = px[i+1], b = px[i+2], a = px[i+3];
+                if (a === 0) continue;
+                const maxc = Math.max(r,g,b), minc = Math.min(r,g,b);
+                const sat = maxc ? (maxc - minc) / maxc : 0;
+                const val = maxc;
+                // Likely shadow: fairly low value and moderate saturation
+                if (val < 170 && sat < 0.6) {
+                    px[i+3] = 0; // make transparent
+                }
+            }
+        }
+        ctx.putImageData(data, 0, 0);
+        scene.textures.addCanvas(dstKey, canvas);
+    } catch (e) { /* no‑op */ }
 }
 
 function createBackground(scene) {
@@ -870,6 +905,7 @@ class Fighter {
         this.jumpCount = 0;
         this.maxJumps = 2; // double jump
         this.wasGrounded = false;
+        this.stunnedTime = 0; // short input lockout after getting hit
 
         // Somersault/dodge state (player only)
         this.isSomersault = false;
@@ -915,7 +951,7 @@ class Fighter {
     createSprite(x, y) {
         // Priority list of possible textures
         const keys = this.type === 'player'
-            ? ['playerSprite_ck','playerSpriteAlt_ck','playerSprite','playerSpriteAlt']
+            ? ['playerSprite_ck_ns','playerSpriteAlt_ck_ns','playerSprite_ck','playerSpriteAlt_ck','playerSprite','playerSpriteAlt']
             : ['npcSprite_ck','npcSpriteAlt_ck','npcSprite','npcSpriteAlt'];
 
         let textureKey = null;
@@ -1072,6 +1108,10 @@ class Fighter {
     }
     
     handleMovement(controls) {
+        if (this.stunnedTime > 0) {
+            this.sprite.setVelocityX(0);
+            return;
+        }
         if (this.isAttacking) {
             this.sprite.setVelocityX(0);
             return;
@@ -1336,12 +1376,12 @@ class Fighter {
     createWeapon() {
         const s = this.scene;
         if (this.type === 'player') {
-            // Player spear: tip-only hitbox; longer reach, slower
-            this.attackTypes = {
-                attack:     { damage: 12, duration: 380, cooldown: 560, type: 'high', offsetX: 130, offsetY: -10, width: 22, height: 18 },
-                duckAttack: { damage: 10, duration: 360, cooldown: 560, type: 'low',  offsetX: 118, offsetY:  18, width: 20, height: 18 },
-                ranged:     { damage: 12, duration: 450, cooldown: 900, type: 'projectile', offsetX: 60, offsetY:  -6, width: 0,  height: 0 }
-            };
+            // Spear: wooden shaft + metal head
+            this.weaponFront = s.add.image(0, 0, 'particle').setTint(0x8b5a2b).setDepth(26); // shaft
+            this.weaponFront.setDisplaySize(120, 6).setOrigin(0, 0.5);
+            this.weaponBack  = s.add.image(0, 0, 'spear-head').setDepth(27); // head
+            this.weaponBack.setOrigin(0, 0.5).setScale(1);
+        } else {
             // Sword: blade + guard/handle
             this.weaponFront = s.add.image(0, 0, 'sword-blade').setDepth(26).setOrigin(0, 0.5);
             this.weaponBack = s.add.container(0, 0).setDepth(26);
@@ -1455,24 +1495,23 @@ class Fighter {
     
     updateAttackHitbox() {
         if (this.isAttacking && this.currentAttack) {
-            const directionMultiplier = this.facingLeft ? -1 : 1;
-            const offsetX = this.currentAttack.offsetX * directionMultiplier;
-            
-            this.attackHitbox.setPosition(
-                this.sprite.x + offsetX,
-                this.sprite.y + this.currentAttack.offsetY
-            );
-            
-            this.attackHitbox.setDisplaySize(
-                this.currentAttack.width,
-                this.currentAttack.height
-            );
-            
-            this.attackHitbox.body.setSize(
-                this.currentAttack.width,
-                this.currentAttack.height
-            );
-            
+            // Spear: place hitbox at the spear tip (weaponBack)
+            if (this.type === 'player' && (this.currentAttackName === 'attack' || this.currentAttackName === 'duckAttack') && this.weaponBack) {
+                const w = this.currentAttack.width;
+                const h = this.currentAttack.height;
+                this.attackHitbox.setPosition(this.weaponBack.x, this.weaponBack.y);
+                this.attackHitbox.setDisplaySize(w, h);
+                this.attackHitbox.body.setSize(w, h);
+            } else {
+                const directionMultiplier = this.facingLeft ? -1 : 1;
+                const offsetX = this.currentAttack.offsetX * directionMultiplier;
+                this.attackHitbox.setPosition(
+                    this.sprite.x + offsetX,
+                    this.sprite.y + this.currentAttack.offsetY
+                );
+                this.attackHitbox.setDisplaySize(this.currentAttack.width, this.currentAttack.height);
+                this.attackHitbox.body.setSize(this.currentAttack.width, this.currentAttack.height);
+            }
             this.attackHitbox.setActive(true);
             this.attackHitbox.setVisible(SHOW_HITBOXES);
         }
@@ -1539,12 +1578,13 @@ class Fighter {
         if (this.weaponBack) this.scene.tweens.killTweensOf(this.weaponBack);
         if (playerNpcCollider) playerNpcCollider.active = true;
 
-        // Controlled knockback
+        // Controlled knockback + brief stun to ignore A/D input
         const knockbackForce = 260;
         const knockbackDirection = this.facingLeft ? 1 : -1;
         const kbX = Phaser.Math.Clamp(knockbackForce * knockbackDirection, -420, 420);
         const kbY = -120; // slight pop
         this.sprite.setVelocity(kbX, Math.min(this.sprite.body.velocity.y, kbY));
+        this.stunnedTime = 220;
         
         if (this.health <= 0) {
             this.sprite.setTint(0xff0000);
